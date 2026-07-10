@@ -19,7 +19,23 @@ const topLevel = computed(() => props.companies.filter((c) => !c.parent_id));
 const childrenOf = (id) => props.companies.filter((c) => c.parent_id === id);
 
 const form = useForm({
-    name: '', code: '', type: 'subsidiary', parent_id: '', currency: 'USD', is_active: true, locked_before: '',
+    name: '',
+    code: '',
+    type: 'subsidiary',
+    parent_id: '',
+    currency: 'USD',
+    email: '',
+    phone: '',
+    address: '',
+    tax_number: '',
+    bank_name: '',
+    bank_account_name: '',
+    bank_account_number: '',
+    bank_branch_code: '',
+    bank_swift_code: '',
+    payment_instructions: '',
+    is_active: true,
+    locked_before: '',
 });
 
 const holdings = computed(() => props.companies.filter((c) => c.type === 'holding'));
@@ -35,6 +51,16 @@ const openEdit = (c) => {
     Object.assign(form, {
         name: c.name, code: c.code, type: c.type,
         parent_id: c.parent_id ?? '', currency: c.currency, is_active: c.is_active,
+        email: c.email ?? '',
+        phone: c.phone ?? '',
+        address: c.address ?? '',
+        tax_number: c.tax_number ?? '',
+        bank_name: c.bank_name ?? '',
+        bank_account_name: c.bank_account_name ?? '',
+        bank_account_number: c.bank_account_number ?? '',
+        bank_branch_code: c.bank_branch_code ?? '',
+        bank_swift_code: c.bank_swift_code ?? '',
+        payment_instructions: c.payment_instructions ?? '',
         locked_before: c.locked_before?.slice(0, 10) ?? '',
     });
     showModal.value = true;
@@ -149,7 +175,7 @@ const destroy = (company) => {
             </p>
         </div>
 
-        <Modal :show="showModal" @close="showModal = false">
+        <Modal :show="showModal" max-width="4xl" @close="showModal = false">
             <form class="p-6" @submit.prevent="submit">
                 <h2 class="mb-4 text-lg font-semibold text-gray-800">{{ editing ? 'Edit company' : 'New company' }}</h2>
                 <p v-if="!editing" class="mb-4 text-sm text-gray-500">A default chart of accounts is created automatically.</p>
@@ -192,6 +218,53 @@ const destroy = (company) => {
                         <input v-model="form.is_active" type="checkbox" class="rounded border-gray-300 text-brand-600" />
                         Active
                     </label>
+                    <div class="sm:col-span-2 border-t border-slate-200 pt-4">
+                        <h3 class="text-sm font-semibold text-slate-800">Invoice details</h3>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Email</label>
+                        <input v-model="form.email" type="email" class="w-full rounded-md border-gray-300 text-sm" />
+                        <p v-if="form.errors.email" class="mt-1 text-xs text-red-600">{{ form.errors.email }}</p>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Phone</label>
+                        <input v-model="form.phone" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Tax/VAT number</label>
+                        <input v-model="form.tax_number" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="mb-1 block text-sm text-gray-600">Address</label>
+                        <textarea v-model="form.address" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
+                    </div>
+                    <div class="sm:col-span-2 border-t border-slate-200 pt-4">
+                        <h3 class="text-sm font-semibold text-slate-800">Bank details for invoices</h3>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Bank name</label>
+                        <input v-model="form.bank_name" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Account name</label>
+                        <input v-model="form.bank_account_name" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Account number</label>
+                        <input v-model="form.bank_account_number" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Branch/code</label>
+                        <input v-model="form.bank_branch_code" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">SWIFT code</label>
+                        <input v-model="form.bank_swift_code" class="w-full rounded-md border-gray-300 text-sm uppercase" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="mb-1 block text-sm text-gray-600">Payment instructions</label>
+                        <textarea v-model="form.payment_instructions" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
+                    </div>
                 </div>
                 <div class="mt-6 flex justify-end gap-3">
                     <button type="button" class="rounded-md border border-gray-300 px-4 py-2 text-sm" @click="showModal = false">Cancel</button>

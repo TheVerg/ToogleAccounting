@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import PasswordInput from '@/Components/PasswordInput.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
@@ -121,7 +122,7 @@ const destroy = (u) => {
                         <label class="mb-1 block text-sm text-gray-600">
                             Password {{ editing ? '(leave blank to keep current)' : '' }}
                         </label>
-                        <input v-model="form.password" type="password" class="w-full rounded-md border-gray-300 text-sm" :required="!editing" />
+                        <PasswordInput v-model="form.password" class="w-full text-sm" :required="!editing" autocomplete="new-password" />
                         <p v-if="form.errors.password" class="mt-1 text-xs text-red-600">{{ form.errors.password }}</p>
                     </div>
                     <div class="sm:col-span-2">

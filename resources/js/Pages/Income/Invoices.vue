@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
 
@@ -14,9 +14,18 @@ const props = defineProps({
     filters: Object,
 });
 
+const page = usePage();
+const currentCompanyId = computed(() => page.props.auth?.currentCompany?.id);
 const showCreate = ref(false);
 const payingInvoice = ref(null);
+const showExport = ref(false);
 const filterState = reactive({
+    status: props.filters?.status ?? '',
+    from: props.filters?.from ?? '',
+    to: props.filters?.to ?? '',
+});
+const exportForm = reactive({
+    format: 'excel',
     status: props.filters?.status ?? '',
     from: props.filters?.from ?? '',
     to: props.filters?.to ?? '',
@@ -24,6 +33,7 @@ const filterState = reactive({
 
 const form = useForm({
     contact_id: '',
+    contact_name: '',
     issue_date: new Date().toISOString().slice(0, 10),
     due_date: '',
     tax_rate_id: '',
@@ -86,6 +96,35 @@ const clearFilters = () => {
     router.get('/income/invoices', {}, { preserveScroll: true, preserveState: true });
 };
 
+const openExport = () => {
+    Object.assign(exportForm, {
+        format: exportForm.format || 'excel',
+        status: filterState.status,
+        from: filterState.from,
+        to: filterState.to,
+    });
+    showExport.value = true;
+};
+
+const exportUrl = computed(() => {
+    const params = new URLSearchParams();
+    Object.entries(exportForm).forEach(([key, value]) => {
+        if (value) {
+            params.set(key, value);
+        }
+    });
+
+    const query = params.toString();
+
+    return `/income/invoices/export${query ? `?${query}` : ''}`;
+});
+
+const closeExport = () => {
+    showExport.value = false;
+};
+
+const belongsToSelectedCompany = (invoice) => invoice.company_id === currentCompanyId.value;
+
 const statusBadge = {
     draft: 'bg-gray-100 text-gray-600',
     sent: 'bg-blue-100 text-blue-800',
@@ -96,14 +135,9 @@ const statusBadge = {
 </script>
 
 <template>
-    <Head title="Invoices" />
+    <Head title="Revenue" />
     <AppLayout>
-        <template #title>Income · Invoices</template>
-        <template #actions>
-            <button v-if="can('invoices.manage')" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="showCreate = true">
-                + New Invoice
-            </button>
-        </template>
+        <template #title>Revenue</template>
 
         <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div>
@@ -127,6 +161,18 @@ const statusBadge = {
             </div>
             <button class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="applyFilters">Apply</button>
             <button class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50" @click="clearFilters">Clear</button>
+            <div class="ml-auto flex flex-wrap items-end gap-3">
+                <button
+                    v-if="can('invoices.view')"
+                    class="rounded-md border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50"
+                    @click="openExport"
+                >
+                    Export
+                </button>
+                <button v-if="can('invoices.manage')" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="showCreate = true">
+                    + New Revenue
+                </button>
+            </div>
         </div>
 
         <div class="overflow-x-auto rounded-lg bg-white shadow-sm">
@@ -135,6 +181,8 @@ const statusBadge = {
                     <tr>
                         <th class="px-4 py-3">No.</th>
                         <th class="px-4 py-3">Customer</th>
+                        <th class="px-4 py-3">Company</th>
+                        <th class="px-4 py-3">Parent Company</th>
                         <th class="px-4 py-3">Issued</th>
                         <th class="px-4 py-3">Due</th>
                         <th class="px-4 py-3">Status</th>
@@ -156,6 +204,8 @@ const statusBadge = {
                             >📎</a>
                         </td>
                         <td class="px-4 py-2.5">{{ inv.contact?.name }}</td>
+                        <td class="px-4 py-2.5 text-slate-600">{{ inv.company?.name ?? 'N/A' }}</td>
+                        <td class="px-4 py-2.5 text-slate-500">{{ inv.company?.parent?.name ?? '-' }}</td>
                         <td class="px-4 py-2.5 text-gray-500">{{ fmtDate(inv.issue_date) }}</td>
                         <td class="px-4 py-2.5 text-gray-500">{{ fmtDate(inv.due_date) }}</td>
                         <td class="px-4 py-2.5">
@@ -168,16 +218,23 @@ const statusBadge = {
                             {{ money(Number(inv.total) - Number(inv.amount_paid)) }}
                         </td>
                         <td class="px-4 py-2.5 text-right">
-                            <button v-if="can('invoices.manage') && inv.status === 'draft'" class="text-xs text-blue-600 hover:underline" @click="issueDraft(inv)">Issue</button>
+                            <button v-if="can('invoices.manage') && belongsToSelectedCompany(inv) && inv.status === 'draft'" class="text-xs text-blue-600 hover:underline" @click="issueDraft(inv)">Issue</button>
+                            <a
+                                v-if="can('invoices.view')"
+                                :href="`/income/invoices/${inv.id}/pdf`"
+                                class="ml-2 text-xs text-brand-600 hover:underline"
+                            >
+                                Invoice PDF
+                            </a>
                             <button
-                                v-if="can('invoices.manage') && ['sent', 'partially_paid'].includes(inv.status)"
-                                class="ml-2 text-xs text-green-700 hover:underline"
+                                v-if="can('invoices.manage') && belongsToSelectedCompany(inv) && ['sent', 'partially_paid'].includes(inv.status)"
+                                class="ml-2 rounded-md bg-green-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-800"
                                 @click="openPay(inv)"
                             >Record payment</button>
                         </td>
                     </tr>
                     <tr v-if="!invoices.data.length">
-                        <td colspan="8" class="px-4 py-8 text-center text-gray-400">No invoices yet.</td>
+                        <td colspan="10" class="px-4 py-8 text-center text-gray-400">No revenue records yet.</td>
                     </tr>
                 </tbody>
             </table>
@@ -190,18 +247,69 @@ const statusBadge = {
                 v-html="link.label" />
         </div>
 
-        <!-- Create invoice -->
+        <!-- Export revenue -->
+        <Modal :show="showExport" @close="closeExport">
+            <div class="p-6">
+                <h2 class="mb-1 text-lg font-semibold text-gray-800">Export revenue</h2>
+                <p class="mb-4 text-sm text-gray-500">Choose the period and format for the export file.</p>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Format</label>
+                        <select v-model="exportForm.format" class="w-full rounded-md border-gray-300 text-sm">
+                            <option value="excel">Excel</option>
+                            <option value="pdf">PDF</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Status</label>
+                        <select v-model="exportForm.status" class="w-full rounded-md border-gray-300 text-sm">
+                            <option value="">All statuses</option>
+                            <option value="draft">Draft</option>
+                            <option value="sent">Sent</option>
+                            <option value="partially_paid">Partially paid</option>
+                            <option value="paid">Paid</option>
+                            <option value="void">Void</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">From</label>
+                        <input v-model="exportForm.from" type="date" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">To</label>
+                        <input v-model="exportForm.to" type="date" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end gap-3">
+                    <button type="button" class="rounded-md border border-gray-300 px-4 py-2 text-sm" @click="closeExport">Cancel</button>
+                    <a :href="exportUrl" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="closeExport">
+                        Download export
+                    </a>
+                </div>
+            </div>
+        </Modal>
+
+        <!-- Create revenue -->
         <Modal :show="showCreate" max-width="4xl" @close="showCreate = false">
             <form class="p-6" @submit.prevent="submitCreate">
-                <h2 class="mb-4 text-lg font-semibold text-gray-800">New invoice</h2>
+                <h2 class="mb-4 text-lg font-semibold text-gray-800">New revenue</h2>
                 <div class="grid gap-4 sm:grid-cols-4">
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Customer</label>
-                        <select v-model="form.contact_id" class="w-full rounded-md border-gray-300 text-sm" required>
-                            <option value="" disabled>Select…</option>
+                        <select v-model="form.contact_id" class="w-full rounded-md border-gray-300 text-sm">
+                            <option value="">Select existing customer</option>
                             <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
                         </select>
                         <p v-if="form.errors.contact_id" class="mt-1 text-xs text-red-600">{{ form.errors.contact_id }}</p>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">New customer name</label>
+                        <input
+                            v-model="form.contact_name"
+                            class="w-full rounded-md border-gray-300 text-sm"
+                            placeholder="Type here if not in the list"
+                        />
+                        <p v-if="form.errors.contact_name" class="mt-1 text-xs text-red-600">{{ form.errors.contact_name }}</p>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Issue date</label>
@@ -280,7 +388,7 @@ const statusBadge = {
                     <div class="flex gap-3">
                         <button type="button" class="rounded-md border border-gray-300 px-4 py-2 text-sm" @click="showCreate = false">Cancel</button>
                         <button type="submit" :disabled="form.processing || subtotal <= 0" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-40">
-                            Create invoice
+                            Create revenue
                         </button>
                     </div>
                 </div>
@@ -290,7 +398,7 @@ const statusBadge = {
         <!-- Record payment -->
         <Modal :show="!!payingInvoice" @close="payingInvoice = null">
             <form v-if="payingInvoice" class="p-6" @submit.prevent="submitPay">
-                <h2 class="mb-1 text-lg font-semibold text-gray-800">Record payment · {{ payingInvoice.invoice_no }}</h2>
+                <h2 class="mb-1 text-lg font-semibold text-gray-800">Record payment - {{ payingInvoice.invoice_no }}</h2>
                 <p class="mb-4 text-sm text-gray-500">Balance due: {{ money(Number(payingInvoice.total) - Number(payingInvoice.amount_paid)) }}</p>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div>

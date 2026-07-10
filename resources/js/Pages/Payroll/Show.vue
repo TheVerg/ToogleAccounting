@@ -176,6 +176,7 @@ const submitApprove = () => {
                         <th class="px-5 py-3 text-right">Earnings</th>
                         <th class="px-5 py-3 text-right">Deductions</th>
                         <th class="px-5 py-3 text-right">Net</th>
+                        <th class="px-5 py-3 text-right">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -208,9 +209,18 @@ const submitApprove = () => {
                             <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ money(item.earnings_addons) }}</td>
                             <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ money(item.deductions_total) }}</td>
                             <td class="px-5 py-3 text-right font-bold tabular-nums text-slate-800">{{ money(item.net) }}</td>
+                            <td class="px-5 py-3 text-right">
+                                <a
+                                    :href="`/payroll/${run.id}/items/${item.id}/payslip`"
+                                    class="inline-flex rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:border-slate-900 hover:bg-slate-50"
+                                    @click.stop
+                                >
+                                    Generate payslip
+                                </a>
+                            </td>
                         </tr>
                         <tr v-if="expanded[item.id]" class="border-b border-slate-100 bg-slate-50/60">
-                            <td colspan="5" class="px-5 py-2">
+                            <td colspan="6" class="px-5 py-2">
                                 <table class="w-full text-sm">
                                     <tbody>
                                         <tr v-for="(line, i) in item.lines" :key="i">
@@ -231,7 +241,7 @@ const submitApprove = () => {
                         </tr>
                     </template>
                     <tr v-if="!adjustedItems.length">
-                        <td colspan="5" class="px-5 py-8 text-center text-slate-400">No payroll items.</td>
+                        <td colspan="6" class="px-5 py-8 text-center text-slate-400">No payroll items.</td>
                     </tr>
                 </tbody>
             </table>

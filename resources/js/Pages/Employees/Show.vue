@@ -92,6 +92,7 @@ const removeComponent = (c) => {
 };
 
 const components = computed(() => props.employee.components ?? []);
+const assignments = computed(() => props.employee.assignments ?? []);
 const earnings = computed(() => components.value.filter((c) => c.kind === 'earning'));
 const deductions = computed(() => components.value.filter((c) => c.kind === 'deduction'));
 
@@ -241,6 +242,50 @@ const calcLabel = (c) => (c.calc_type === 'fixed' ? money(c.amount) : `${c.amoun
                         <p v-if="contractForm.errors.contract" class="basis-full text-xs text-red-600">{{ contractForm.errors.contract }}</p>
                     </form>
                 </div>
+            </div>
+
+            <!-- Company assignments -->
+            <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="mb-4">
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Company assignments</h3>
+                    <p class="mt-1 text-xs text-slate-400">Company-specific roles, salary, pay frequency and active status.</p>
+                </div>
+
+                <div v-if="assignments.length" class="space-y-3">
+                    <div
+                        v-for="assignment in assignments"
+                        :key="assignment.id"
+                        class="rounded-lg border border-slate-200 bg-slate-50 p-4"
+                    >
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="font-semibold text-slate-800">{{ assignment.company?.name ?? 'N/A' }}</div>
+                                <div class="mt-1 text-sm text-slate-500">{{ assignment.job_title ?? 'No title' }} - {{ assignment.department ?? 'No department' }}</div>
+                            </div>
+                            <span
+                                class="rounded-full px-2 py-0.5 text-xs font-medium"
+                                :class="assignment.is_active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'"
+                            >
+                                {{ assignment.is_active ? 'Active' : 'Inactive' }}
+                            </span>
+                        </div>
+                        <div class="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
+                            <div>
+                                <div class="text-xs uppercase tracking-wide text-slate-400">Base salary</div>
+                                <div class="font-medium text-slate-800">{{ money(assignment.base_salary) }}</div>
+                            </div>
+                            <div>
+                                <div class="text-xs uppercase tracking-wide text-slate-400">Pay frequency</div>
+                                <div class="capitalize text-slate-800">{{ assignment.pay_frequency }}</div>
+                            </div>
+                            <div>
+                                <div class="text-xs uppercase tracking-wide text-slate-400">Period</div>
+                                <div class="text-slate-800">{{ fmtDate(assignment.start_date) }} - {{ fmtDate(assignment.end_date) }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p v-else class="py-4 text-center text-sm text-slate-400">No company assignments yet.</p>
             </div>
 
             <!-- Salary structure -->

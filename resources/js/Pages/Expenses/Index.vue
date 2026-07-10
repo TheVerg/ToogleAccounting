@@ -19,8 +19,15 @@ const props = defineProps({
 
 const showModal = ref(false);
 const showTopUp = ref(false);
+const showExport = ref(false);
 const filterState = reactive({
     status: props.filters?.status ?? '',
+    from: props.filters?.from ?? '',
+    to: props.filters?.to ?? '',
+});
+const exportForm = reactive({
+    format: 'excel',
+    status: props.pettyOnly ? 'petty_cash' : (props.filters?.status ?? ''),
     from: props.filters?.from ?? '',
     to: props.filters?.to ?? '',
 });
@@ -77,25 +84,37 @@ const clearFilters = () => {
     Object.assign(filterState, { status: '', from: '', to: '' });
     router.get('/expenses', props.pettyOnly ? { petty: 1 } : {}, { preserveScroll: true, preserveState: true });
 };
+
+const openExport = () => {
+    Object.assign(exportForm, {
+        format: exportForm.format || 'excel',
+        status: props.pettyOnly ? 'petty_cash' : (filterState.status || ''),
+        from: filterState.from,
+        to: filterState.to,
+    });
+    showExport.value = true;
+};
+
+const exportUrl = computed(() => {
+    const params = new URLSearchParams({
+        format: exportForm.format,
+        status: exportForm.status || '',
+        from: exportForm.from || '',
+        to: exportForm.to || '',
+    });
+
+    return `/expenses/export?${params.toString()}`;
+});
+
+const closeExport = () => {
+    showExport.value = false;
+};
 </script>
 
 <template>
     <Head title="Expenses" />
     <AppLayout>
         <template #title>Expenses</template>
-        <template #actions>
-            <button
-                v-if="pettyOnly && can('payments.manage')"
-                class="rounded-md border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50"
-                @click="showTopUp = true"
-            >
-                ↑ Top up petty cash
-            </button>
-            <button v-if="can('expenses.manage')" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="showModal = true">
-                + New Expense
-            </button>
-        </template>
-
         <ExpenseTabs :active="pettyOnly ? 'petty' : 'all'" />
 
         <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -118,6 +137,25 @@ const clearFilters = () => {
             </div>
             <button class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="applyFilters">Apply</button>
             <button class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50" @click="clearFilters">Clear</button>
+            <div class="ml-auto flex flex-wrap items-end gap-3">
+                <button
+                    type="button"
+                    class="rounded-md border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50"
+                    @click="openExport"
+                >
+                    Export
+                </button>
+                <button
+                    v-if="pettyOnly && can('payments.manage')"
+                    class="rounded-md border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50"
+                    @click="showTopUp = true"
+                >
+                    ↑ Top up petty cash
+                </button>
+                <button v-if="can('expenses.manage')" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="showModal = true">
+                    + New Expense
+                </button>
+            </div>
         </div>
 
         <!-- Petty cash float balances -->
@@ -183,6 +221,46 @@ const clearFilters = () => {
                 :class="link.active ? 'bg-brand-600 text-white' : link.url ? 'bg-white text-gray-600 hover:bg-gray-50' : 'text-gray-300'"
                 v-html="link.label" />
         </div>
+
+        <!-- Export expenses -->
+        <Modal :show="showExport" @close="closeExport">
+            <div class="p-6">
+                <h2 class="mb-1 text-lg font-semibold text-gray-800">Export expenses</h2>
+                <p class="mb-4 text-sm text-gray-500">Choose the period and format for the export file.</p>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Format</label>
+                        <select v-model="exportForm.format" class="w-full rounded-md border-gray-300 text-sm">
+                            <option value="excel">Excel</option>
+                            <option value="pdf">PDF</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Expense type</label>
+                        <select v-model="exportForm.status" :disabled="pettyOnly" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-100">
+                            <option value="">All expenses</option>
+                            <option value="ordinary">Standard</option>
+                            <option value="petty_cash">Petty cash</option>
+                            <option value="recurring">Recurring</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">From</label>
+                        <input v-model="exportForm.from" type="date" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">To</label>
+                        <input v-model="exportForm.to" type="date" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end gap-3">
+                    <button type="button" class="rounded-md border border-gray-300 px-4 py-2 text-sm" @click="closeExport">Cancel</button>
+                    <a :href="exportUrl" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="closeExport">
+                        Download export
+                    </a>
+                </div>
+            </div>
+        </Modal>
 
         <Modal :show="showModal" @close="showModal = false">
             <form class="p-6" @submit.prevent="submit">

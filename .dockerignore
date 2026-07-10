@@ -1,0 +1,16 @@
+.git
+.agents
+.codex
+node_modules
+vendor
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/testing/*
+storage/framework/views/*
+storage/logs/*
+.env
+.env.*
+!.env.docker
+public/build
+ngrok
+ngrok.zip

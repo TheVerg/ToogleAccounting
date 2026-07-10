@@ -41,6 +41,16 @@ class Employee extends Model
         return $this->hasMany(SalaryComponent::class);
     }
 
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(EmployeeAssignment::class);
+    }
+
+    public function loans(): HasMany
+    {
+        return $this->hasMany(EmployeeLoan::class);
+    }
+
     public function paymentAccount(): BelongsTo
     {
         return $this->belongsTo(Account::class, 'payment_account_id');

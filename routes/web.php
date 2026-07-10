@@ -9,13 +9,19 @@ use App\Http\Controllers\CompanySwitchController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\EmployeeLoanController;
 use App\Http\Controllers\EquityController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\ExpenseExportController;
 use App\Http\Controllers\IntercompanyController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\InvoiceExportController;
+use App\Http\Controllers\InvoicePdfController;
 use App\Http\Controllers\JournalEntryController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PaymentExportController;
 use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\PayrollPayslipController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RatioBenchmarkController;
 use App\Http\Controllers\RecurringExpenseController;
@@ -67,9 +73,13 @@ Route::middleware(['auth', 'company'])->group(function () {
     Route::post('/contacts/import', [ContactController::class, 'import'])
         ->middleware('permission:contacts.manage')->name('contacts.import');
 
-    // Income / invoices
+    // Income / revenue
     Route::get('/income/invoices', [InvoiceController::class, 'index'])
         ->middleware('permission:invoices.view')->name('invoices.index');
+    Route::get('/income/invoices/export', InvoiceExportController::class)
+        ->middleware('permission:invoices.view')->name('invoices.export');
+    Route::get('/income/invoices/{invoice}/pdf', InvoicePdfController::class)
+        ->middleware('permission:invoices.view')->name('invoices.pdf');
     Route::middleware('permission:invoices.manage')->group(function () {
         Route::post('/income/invoices', [InvoiceController::class, 'store'])->name('invoices.store');
         Route::post('/income/invoices/{invoice}/issue', [InvoiceController::class, 'issue'])->name('invoices.issue');
@@ -79,12 +89,16 @@ Route::middleware(['auth', 'company'])->group(function () {
     // Payments
     Route::get('/payments', [PaymentController::class, 'index'])
         ->middleware('permission:payments.view')->name('payments.index');
+    Route::get('/payments/export', PaymentExportController::class)
+        ->middleware('permission:payments.view')->name('payments.export');
     Route::post('/payments', [PaymentController::class, 'store'])
         ->middleware('permission:payments.manage')->name('payments.store');
 
     // Expenses (one-off, petty cash, recurring)
     Route::get('/expenses', [ExpenseController::class, 'index'])
         ->middleware('permission:expenses.view')->name('expenses.index');
+    Route::get('/expenses/export', ExpenseExportController::class)
+        ->middleware('permission:expenses.view')->name('expenses.export');
     Route::post('/expenses', [ExpenseController::class, 'store'])
         ->middleware('permission:expenses.manage')->name('expenses.store');
     Route::get('/expenses/recurring', [RecurringExpenseController::class, 'index'])
@@ -109,11 +123,19 @@ Route::middleware(['auth', 'company'])->group(function () {
         Route::delete('/employees/{employee}/components/{component}', [EmployeeController::class, 'destroyComponent'])->name('employees.components.destroy');
     });
 
+    // Employee loans
+    Route::get('/employee-loans', [EmployeeLoanController::class, 'index'])
+        ->middleware('permission:payroll.view')->name('employee-loans.index');
+    Route::post('/employee-loans', [EmployeeLoanController::class, 'store'])
+        ->middleware('permission:payroll.manage')->name('employee-loans.store');
+
     // Payroll
     Route::get('/payroll', [PayrollController::class, 'index'])
         ->middleware('permission:payroll.view')->name('payroll.index');
     Route::get('/payroll/{payrollRun}', [PayrollController::class, 'show'])
         ->middleware('permission:payroll.view')->name('payroll.show');
+    Route::get('/payroll/{payrollRun}/items/{payrollItem}/payslip', PayrollPayslipController::class)
+        ->middleware('permission:payroll.view')->name('payroll.items.payslip');
     Route::middleware('permission:payroll.manage')->group(function () {
         Route::post('/payroll', [PayrollController::class, 'store'])->name('payroll.store');
         Route::post('/payroll/{payrollRun}/approve', [PayrollController::class, 'approve'])->name('payroll.approve');
@@ -164,6 +186,11 @@ Route::middleware(['auth', 'company'])->group(function () {
         ->middleware('permission:taxes.manage')->name('taxes.rates.destroy');
 
     // Statements
+    Route::get('/analysis', [ReportController::class, 'analysis'])
+        ->middleware('permission:reports.view')->name('reports.analysis');
+    Route::get('/analysis/{type}', [ReportController::class, 'analysisView'])
+        ->middleware('permission:reports.view')->name('reports.analysis.view');
+
     Route::middleware('permission:reports.view')->prefix('statements')->group(function () {
         Route::get('/', [ReportController::class, 'index'])->name('reports.index');
         Route::get('/register', [StatementRegisterController::class, 'register'])->name('statements.register');

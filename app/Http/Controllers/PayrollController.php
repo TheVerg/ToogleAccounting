@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Account;
 use App\Models\AuditLog;
-use App\Models\Employee;
+use App\Models\EmployeeAssignment;
 use App\Models\PayrollRun;
 use App\Services\PayrollService;
 use App\Support\CompanyRules;
@@ -29,7 +29,7 @@ class PayrollController extends Controller
             'moneyAccounts' => Account::where('company_id', $companyId)
                 ->whereIn('subtype', Account::MONEY_SUBTYPES)->where('is_active', true)
                 ->orderBy('code')->get(['id', 'code', 'name']),
-            'activeEmployees' => Employee::where('company_id', $companyId)->where('is_active', true)->count(),
+            'activeEmployees' => EmployeeAssignment::where('company_id', $companyId)->where('is_active', true)->count(),
         ]);
     }
 

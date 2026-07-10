@@ -13,7 +13,8 @@ class Contact extends Model
     use Auditable, SoftDeletes;
 
     protected $fillable = [
-        'company_id', 'type', 'name', 'email', 'phone', 'address', 'is_active',
+        'company_id', 'type', 'name', 'contact_person', 'email', 'phone',
+        'tax_number', 'address', 'billing_address', 'is_active',
     ];
 
     protected $casts = [

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FinancialStatement;
 use App\Services\ReportService;
+use App\Services\AnalysisService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -16,7 +17,7 @@ use Inertia\Response;
  */
 class ReportController extends Controller
 {
-    public function __construct(protected ReportService $reports) {}
+    public function __construct(protected ReportService $reports, protected AnalysisService $analysisReports) {}
 
     /**
      * Resolve which companies a generation run covers.
@@ -69,6 +70,40 @@ class ReportController extends Controller
         ]);
     }
 
+    /** Landing page for operational and management analysis reports. */
+    public function analysis(): Response
+    {
+        return Inertia::render('Reports/Analysis', [
+            'reports' => [
+                ['name' => 'Accounts Receivable Ageing', 'description' => 'Review unpaid customer balances by current, 30, 60, 90 and 90+ day ageing bands.', 'icon' => 'receivables', 'href' => '/analysis/receivables-ageing'],
+                ['name' => 'Revenue Analysis', 'description' => 'Analyse revenue trends by period, customer, company and income account.', 'icon' => 'revenue', 'href' => '/analysis/revenue'],
+                ['name' => 'Expense Analysis', 'description' => 'Understand spending by period, supplier, category, department and company.', 'icon' => 'expenses', 'href' => '/analysis/expenses'],
+                ['name' => 'Payroll Summary', 'description' => 'Compare basic pay, earnings, deductions, gross pay and net pay across payroll periods.', 'icon' => 'payroll', 'href' => '/analysis/payroll'],
+                ['name' => 'Employee Establishment and Contract Expiry', 'description' => 'Monitor headcount, assignments, departments and contracts approaching expiry.', 'icon' => 'employees', 'href' => '/analysis/employee-establishment'],
+                ['name' => 'Subsidiary Performance', 'description' => 'Compare the financial performance and contribution of companies across the group.', 'icon' => 'subsidiaries', 'href' => '/analysis/subsidiary-performance'],
+                ['name' => 'Intercompany Reconciliation', 'description' => 'Identify and reconcile transfers and balances recorded between related companies.', 'icon' => 'intercompany', 'href' => '/analysis/intercompany-reconciliation'],
+                ['name' => 'Monthly Management Accounts Pack', 'description' => 'Prepare a consolidated monthly view of performance, position, cash, budgets and ratios.', 'icon' => 'management', 'href' => '/analysis/management-accounts'],
+            ],
+        ]);
+    }
+
+    public function analysisView(Request $request, string $type): Response
+    {
+        $types = ['receivables-ageing', 'revenue', 'expenses', 'payroll', 'employee-establishment', 'subsidiary-performance', 'intercompany-reconciliation', 'management-accounts'];
+        abort_unless(in_array($type, $types, true), 404);
+
+        $from = $request->date('from')?->toDateString() ?? now()->startOfMonth()->toDateString();
+        $to = $request->date('to')?->toDateString() ?? now()->toDateString();
+        abort_if($from > $to, 422, 'The start date must be before the end date.');
+        $company = $request->user()->currentCompany;
+
+        return Inertia::render('Reports/AnalysisView', [
+            'report' => $this->analysisReports->generate($type, $this->reportingCompanyIds($request), $from, $to, $company),
+            'filters' => compact('from', 'to'),
+            'type' => $type,
+        ]);
+    }
+
     /**
      * A statement type page: registered snapshots for this type with a
      * period selector. Defaults to the newest approved statement, falling
@@ -78,9 +113,9 @@ class ReportController extends Controller
     {
         abort_unless(array_key_exists($type, FinancialStatement::TYPES), 404);
 
-        $companyId = $request->user()->current_company_id;
+        $companyIds = $this->reportingCompanyIds($request);
 
-        $available = FinancialStatement::where('company_id', $companyId)
+        $available = FinancialStatement::whereIn('company_id', $companyIds)
             ->where('type', $type)
             ->orderByDesc('period_to')->orderByDesc('id')
             ->get(['id', 'name', 'scope_label', 'period_from', 'period_to', 'status', 'approved_at']);
@@ -95,7 +130,7 @@ class ReportController extends Controller
             'typeLabel' => FinancialStatement::TYPES[$type],
             'available' => $available,
             'statement' => $selected
-                ? FinancialStatement::with(['generator:id,name', 'approver:id,name'])->find($selected->id)
+                ? FinancialStatement::with(['company:id,name,parent_id', 'company.parent:id,name', 'generator:id,name', 'approver:id,name'])->find($selected->id)
                 : null,
             'canApprove' => $request->user()->can('companies.manage'),
         ]);

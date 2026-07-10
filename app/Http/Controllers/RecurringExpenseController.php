@@ -21,9 +21,17 @@ class RecurringExpenseController extends Controller
     public function index(Request $request): Response
     {
         $companyId = $request->user()->current_company_id;
+        $filters = $request->validate([
+            'status' => ['nullable', Rule::in(['active', 'paused'])],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+        ]);
 
         return Inertia::render('Expenses/Recurring', [
             'recurring' => RecurringExpense::where('company_id', $companyId)
+                ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('is_active', $status === 'active'))
+                ->when($filters['from'] ?? null, fn ($query, $from) => $query->whereDate('next_run_date', '>=', $from))
+                ->when($filters['to'] ?? null, fn ($query, $to) => $query->whereDate('next_run_date', '<=', $to))
                 ->with(['account:id,code,name', 'paidFromAccount:id,code,name', 'contact:id,name'])
                 ->withCount('expenses')
                 ->orderBy('name')->get(),
@@ -43,6 +51,11 @@ class RecurringExpenseController extends Controller
                 ->where('is_active', true)
                 ->whereDate('next_run_date', '<=', now()->toDateString())
                 ->count(),
+            'filters' => [
+                'status' => $filters['status'] ?? '',
+                'from' => $filters['from'] ?? '',
+                'to' => $filters['to'] ?? '',
+            ],
         ]);
     }
 

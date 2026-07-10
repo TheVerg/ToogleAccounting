@@ -1,8 +1,17 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, useSlots } from 'vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
+import ApplicationLogo from '@/Components/ApplicationLogo.vue';
+
+defineProps({
+    hideCompanySelector: {
+        type: Boolean,
+        default: false,
+    },
+});
 
 const page = usePage();
+const slots = useSlots();
 const user = computed(() => page.props.auth.user);
 const companies = computed(() => page.props.auth.companies ?? []);
 const currentCompany = computed(() => page.props.auth.currentCompany);
@@ -50,7 +59,7 @@ const nav = computed(() => [
     {
         label: 'Transactions',
         items: [
-            { label: 'Invoices', href: '/income/invoices', icon: 'invoices', show: canDo('invoices.view') },
+            { label: 'Revenue', href: '/income/invoices', icon: 'invoices', show: canDo('invoices.view') },
             { label: 'Payments', href: '/payments', icon: 'payments', show: canDo('payments.view') },
             { label: 'Expenses', href: '/expenses', icon: 'expenses', show: canDo('expenses.view') },
             { label: "Owner's Equity", href: '/equity', icon: 'equity', show: canDo('equity.view') },
@@ -62,6 +71,7 @@ const nav = computed(() => [
         label: 'Reporting',
         items: [
             { label: 'Financial Statements', href: '/statements/register', icon: 'statements', show: canDo('reports.view') },
+            { label: 'Analysis', href: '/analysis', icon: 'benchmarks', show: canDo('reports.view') },
             { label: 'Budgets', href: '/budgets', icon: 'budgets', show: canDo('budgets.view') },
         ],
     },
@@ -70,6 +80,7 @@ const nav = computed(() => [
         items: [
             { label: 'Employees', href: '/employees', icon: 'employees', show: canDo('payroll.view') },
             { label: 'Payroll', href: '/payroll', icon: 'payroll', show: canDo('payroll.view') },
+            { label: 'Employee Loans', href: '/employee-loans', icon: 'equity', show: canDo('payroll.view') },
         ],
     },
     {
@@ -177,6 +188,10 @@ const breadcrumbs = computed(() => {
         return [...statements, crumb('Statement Register', '/statements/register'),
             crumb(page.props.statement?.name ?? 'Statement')];
     }
+    if (/^\/analysis\/.+/.test(path)) {
+        return [crumb('Reporting'), crumb('Analysis', '/analysis'),
+            crumb(page.props.report?.title ?? 'Report')];
+    }
     if (/^\/budgets\/\d+/.test(path)) {
         return [crumb('Reporting'), crumb('Budgets', '/budgets'),
             crumb(page.props.budget?.name ?? 'Budget')];
@@ -189,8 +204,120 @@ const breadcrumbs = computed(() => {
         return [crumb('Human Resources'), crumb('Payroll', '/payroll'),
             crumb(page.props.run?.reference ?? 'Payroll Run')];
     }
+    if (path === '/employee-loans') {
+        return [crumb('Human Resources'), crumb('Employee Loans')];
+    }
 
     return [];
+});
+
+const currentPath = computed(() => {
+    try {
+        return new URL(page.url ?? window.location.pathname, window.location.origin).pathname;
+    } catch {
+        return window.location.pathname;
+    }
+});
+
+const currentQuery = computed(() => {
+    try {
+        return new URL(page.url ?? window.location.href, window.location.origin).searchParams;
+    } catch {
+        return new URLSearchParams(window.location.search);
+    }
+});
+
+const pageDescription = computed(() => {
+    const path = currentPath.value;
+
+    if (path === '/dashboard') {
+        return 'A quick overview of company activity, balances, and recent accounting movement.';
+    }
+    if (path === '/analysis') {
+        return 'Explore operational, workforce, group, and management reporting for better business decisions.';
+    }
+    if (path === '/income/invoices') {
+        return 'Track revenue records, customer balances, payments received, and export filtered revenue reports.';
+    }
+    if (path === '/payments') {
+        return 'Record cash movements, transfers, and payment activity across your money accounts.';
+    }
+    if (path === '/expenses') {
+        return currentQuery.value.get('petty') === '1'
+            ? 'Monitor petty cash spending, float balances, top-ups, and supporting expense records.'
+            : 'Capture expenses, attach supporting documents, and review spending by date, type, or status.';
+    }
+    if (path === '/expenses/recurring') {
+        return 'Maintain repeating expense schedules and generate due expenses into the ledger.';
+    }
+    if (path === '/equity') {
+        return "Record capital injections, drawings, and owner equity movements.";
+    }
+    if (path === '/intercompany') {
+        return 'Manage funding, loans, and balances between companies in the group.';
+    }
+    if (path === '/journal') {
+        return 'Review posted journal entries, draft adjustments, reversals, and ledger evidence.';
+    }
+    if (path === '/statements/register') {
+        return 'Generate, import, approve, and open frozen financial statement snapshots by period.';
+    }
+    if (/^\/statements\/register\/\d+/.test(path)) {
+        return 'View the selected frozen statement snapshot exactly as it was generated or approved.';
+    }
+    if (path.startsWith('/statements/')) {
+        return 'Open registered financial statements for the selected statement type and period.';
+    }
+    if (path === '/budgets') {
+        return 'Create and review operating budgets for planning, tracking, and comparison.';
+    }
+    if (/^\/budgets\/\d+/.test(path)) {
+        return 'Edit budget lines and review the structure for this budget period.';
+    }
+    if (path === '/employees') {
+        return 'Manage staff records, employment details, salary structure, and linked system access.';
+    }
+    if (/^\/employees\/\d+/.test(path)) {
+        return 'Review employee profile details, contract records, and recurring payroll components.';
+    }
+    if (path === '/payroll') {
+        return 'Prepare payroll runs, review pay periods, and post approved payroll to accounting.';
+    }
+    if (/^\/payroll\/\d+/.test(path)) {
+        return 'Review payroll figures, employee add-ons, deductions, approval status, and ledger posting.';
+    }
+    if (path === '/employee-loans') {
+        return 'Track employee loans, outstanding balances, repayments, and payroll deductions.';
+    }
+    if (path === '/accounts') {
+        return 'Maintain the chart of accounts used for posting, reporting, and statement grouping.';
+    }
+    if (path === '/contacts') {
+        return 'Manage customers, vendors, and shared contacts used across revenue and expenses.';
+    }
+    if (path === '/taxes/rates') {
+        return 'Configure tax rates used when recording revenue, expenses, and tax summaries.';
+    }
+    if (path === '/settings/ratio-benchmarks') {
+        return 'Set benchmark targets and custom ratios for financial ratio reporting.';
+    }
+    if (path === '/companies') {
+        return 'Manage holding and subsidiary companies, currencies, access, and reporting structure.';
+    }
+    if (path === '/admin/audit-logs') {
+        return 'Review system activity, data changes, approvals, and user actions for audit control.';
+    }
+    if (path === '/admin/users') {
+        return 'Create users, assign company access, and manage role-based permissions.';
+    }
+    if (path === '/admin/roles') {
+        return 'Configure roles and permissions that control access across the system.';
+    }
+    if (path === '/profile') {
+        return 'Update your account information, password, and profile settings.';
+    }
+
+    return '';
 });
 
 const switchCompany = (event) => {
@@ -199,11 +326,11 @@ const switchCompany = (event) => {
 </script>
 
 <template>
-    <div class="min-h-screen bg-slate-100">
+    <div class="min-h-screen bg-zinc-100">
         <!-- Mobile backdrop -->
         <div
             v-if="sidebarOpen"
-            class="fixed inset-0 z-30 bg-slate-900/50 lg:hidden"
+            class="fixed inset-0 z-30 bg-black/50 lg:hidden"
             @click="sidebarOpen = false"
         />
 
@@ -213,14 +340,9 @@ const switchCompany = (event) => {
             :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
         >
             <!-- Brand -->
-            <Link href="/dashboard" class="flex h-16 shrink-0 items-center gap-3 border-b border-white/10 px-5">
-                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-sm font-bold text-white shadow-lg">
-                    H
-                </span>
-                <span class="leading-tight">
-                    <span class="block text-[15px] font-semibold tracking-wide text-white">HOLDCO</span>
-                    <span class="block text-[11px] font-medium uppercase tracking-widest text-brand-300">Financial Suite</span>
-                </span>
+            <Link href="/dashboard" class="flex h-32 shrink-0 flex-col items-start justify-center border-b border-white/10 px-4">
+                <ApplicationLogo size="sidebar" />
+                <span class="mt-1 text-xs font-semibold uppercase tracking-[0.22em] text-brand-300">Financial Suite</span>
             </Link>
 
             <!-- Navigation -->
@@ -310,7 +432,7 @@ const switchCompany = (event) => {
         <!-- Main column -->
         <div class="flex min-h-screen flex-col lg:pl-64">
             <!-- Top bar -->
-            <header class="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm sm:px-6">
+            <header class="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-4 shadow-sm sm:px-6">
                 <div class="flex min-w-0 items-center gap-3">
                     <button class="rounded-md p-2 text-slate-500 hover:bg-slate-100 lg:hidden" @click="sidebarOpen = !sidebarOpen">
                         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -346,7 +468,7 @@ const switchCompany = (event) => {
                         class="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-slate-100"
                         @click="userMenuOpen = !userMenuOpen"
                     >
-                        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-brand-700 text-xs font-semibold text-white">
+                        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-black text-xs font-semibold text-white shadow-sm">
                             {{ initials }}
                         </span>
                         <span class="hidden text-left leading-tight md:block">
@@ -410,11 +532,16 @@ const switchCompany = (event) => {
                         </button>
                     </div>
 
-                    <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-                        <h1 class="text-2xl font-semibold tracking-tight text-slate-900"><slot name="title" /></h1>
+                    <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <h1 class="text-2xl font-semibold tracking-tight text-slate-900"><slot name="title" /></h1>
+                            <p v-if="slots.description || pageDescription" class="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                                <slot name="description">{{ pageDescription }}</slot>
+                            </p>
+                        </div>
                         <div class="flex flex-wrap items-center gap-3">
                             <!-- Company context filter -->
-                            <div v-if="companies.length" class="flex items-center gap-2">
+                            <div v-if="!hideCompanySelector && companies.length" class="flex items-center gap-2">
                                 <span class="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Company</span>
                                 <select
                                     class="rounded-md border-slate-300 bg-white py-1.5 pr-8 text-sm font-medium text-slate-700 shadow-sm focus:border-brand-500 focus:ring-brand-500"

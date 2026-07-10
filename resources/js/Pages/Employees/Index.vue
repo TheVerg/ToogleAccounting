@@ -87,7 +87,7 @@ const destroy = (e) => {
                         <td class="px-5 py-3 font-mono text-xs text-slate-600">{{ e.employee_no }}</td>
                         <td class="px-5 py-3">
                             <div class="font-bold text-slate-800">{{ e.first_name }} {{ e.last_name }}</div>
-                            <div class="text-xs text-slate-500">{{ e.job_title ?? 'N/A' }}</div>
+                            <div class="text-xs tex t-slate-500">{{ e.job_title ?? 'N/A' }}</div>
                         </td>
                         <td class="px-5 py-3 text-slate-600">{{ e.department ?? 'N/A' }}</td>
                         <td class="px-5 py-3 text-slate-600">

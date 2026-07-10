@@ -39,9 +39,9 @@ const clearFilters = () => {
 
 const form = useForm({
     type: '',
-    scope: 'company',
-    period_from: '',
-    period_to: new Date().toISOString().slice(0, 10),
+    scope: 'current',
+    from: '',
+    to: new Date().toISOString().slice(0, 10),
 });
 
 const submit = () => {
@@ -149,6 +149,8 @@ const statusBadge = {
                     <tr class="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                         <th class="px-5 py-3">Statement</th>
                         <th class="px-5 py-3">Type</th>
+                        <th class="px-5 py-3">Company</th>
+                        <th class="px-5 py-3">Parent Company</th>
                         <th class="px-5 py-3">Period</th>
                         <th class="px-5 py-3">Status</th>
                         <th class="px-5 py-3">Generated</th>
@@ -179,6 +181,8 @@ const statusBadge = {
                             </span>
                         </td>
                         <td class="px-5 py-3 text-slate-600">{{ types[s.type] ?? s.type }}</td>
+                        <td class="px-5 py-3 text-slate-600">{{ s.company?.name ?? 'N/A' }}</td>
+                        <td class="px-5 py-3 text-slate-500">{{ s.company?.parent?.name ?? '-' }}</td>
                         <td class="px-5 py-3 whitespace-nowrap text-slate-600">
                             {{ s.period_from ? fmtDate(s.period_from) : '…' }} – {{ fmtDate(s.period_to) }}
                         </td>
@@ -211,7 +215,7 @@ const statusBadge = {
                         </td>
                     </tr>
                     <tr v-if="!statements.data.length">
-                        <td colspan="6" class="px-5 py-8 text-center text-slate-400">
+                        <td colspan="8" class="px-5 py-8 text-center text-slate-400">
                             No statements in the register yet.
                         </td>
                     </tr>
@@ -246,20 +250,20 @@ const statusBadge = {
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Scope</label>
                         <select v-model="form.scope" class="w-full rounded-md border-gray-300 text-sm" required>
-                            <option value="company">Current company</option>
+                            <option value="current">Current company</option>
                             <option value="consolidated">Consolidated</option>
                         </select>
                         <p v-if="form.errors.scope" class="mt-1 text-xs text-red-600">{{ form.errors.scope }}</p>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">From <span class="text-gray-400">(optional)</span></label>
-                        <input v-model="form.period_from" type="date" class="w-full rounded-md border-gray-300 text-sm" />
-                        <p v-if="form.errors.period_from" class="mt-1 text-xs text-red-600">{{ form.errors.period_from }}</p>
+                        <input v-model="form.from" type="date" class="w-full rounded-md border-gray-300 text-sm" />
+                        <p v-if="form.errors.from" class="mt-1 text-xs text-red-600">{{ form.errors.from }}</p>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">To</label>
-                        <input v-model="form.period_to" type="date" class="w-full rounded-md border-gray-300 text-sm" required />
-                        <p v-if="form.errors.period_to" class="mt-1 text-xs text-red-600">{{ form.errors.period_to }}</p>
+                        <input v-model="form.to" type="date" class="w-full rounded-md border-gray-300 text-sm" required />
+                        <p v-if="form.errors.to" class="mt-1 text-xs text-red-600">{{ form.errors.to }}</p>
                     </div>
                 </div>
                 <p class="mt-3 text-xs text-slate-500">

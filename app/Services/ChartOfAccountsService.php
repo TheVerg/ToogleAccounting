@@ -21,6 +21,8 @@ class ChartOfAccountsService
             'group' => 'Current Assets', 'line' => 'Cash and cash equivalents'],
         ['code' => '1100', 'name' => 'Accounts Receivable', 'type' => 'asset', 'subtype' => 'receivable', 'system' => true,
             'group' => 'Current Assets', 'line' => 'Trade and other receivables'],
+        ['code' => '1150', 'name' => 'Employee Loans Receivable', 'type' => 'asset', 'subtype' => 'employee_loan', 'system' => true,
+            'group' => 'Current Assets', 'line' => 'Trade and other receivables'],
         ['code' => '1200', 'name' => 'Intercompany Receivable', 'type' => 'asset', 'subtype' => 'intercompany', 'system' => true,
             'group' => 'Current Assets', 'line' => 'Intercompany balances'],
         ['code' => '1300', 'name' => 'Investment in Subsidiaries', 'type' => 'asset', 'subtype' => 'intercompany_investment', 'system' => true,
@@ -131,6 +133,22 @@ class ChartOfAccountsService
                 ],
             );
         }
+    }
+
+    public function ensureEmployeeLoanAccount(Company $company): Account
+    {
+        return Account::firstOrCreate(
+            ['company_id' => $company->id, 'code' => '1150'],
+            [
+                'name' => 'Employee Loans Receivable',
+                'type' => 'asset',
+                'subtype' => 'employee_loan',
+                'is_system' => true,
+                'is_active' => true,
+                'statement_group' => 'Current Assets',
+                'statement_line' => 'Trade and other receivables',
+            ],
+        );
     }
 
     public function find(Company $company, string $code): Account

@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Company;
 use App\Models\Employee;
+use App\Models\EmployeeAssignment;
+use App\Models\EmployeeLoan;
 use App\Models\PayrollRun;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -24,9 +26,9 @@ class PayrollService
     ) {}
 
     /** Build one employee's pay slip. $onceOff: extra [{kind,code,name,amount}]. */
-    public function computeItem(Employee $employee, array $onceOff = []): array
+    public function computeItem(Employee $employee, array $onceOff = [], ?EmployeeAssignment $assignment = null): array
     {
-        $basic = round((float) $employee->base_salary, 2);
+        $basic = round((float) ($assignment?->base_salary ?? $employee->base_salary), 2);
 
         $lines = [[
             'kind' => 'earning', 'code' => 'basic', 'name' => 'Basic Salary',
@@ -40,6 +42,24 @@ class PayrollService
                 'name' => $component->name,
                 'amount' => $component->resolve($basic),
                 'source' => 'recurring',
+            ];
+        }
+
+        foreach ($employee->loans ?? [] as $loan) {
+            if ($loan->status !== 'active' || (float) $loan->outstanding_balance <= 0) {
+                continue;
+            }
+            $amount = min((float) $loan->repayment_amount, (float) $loan->outstanding_balance);
+            if ($amount <= 0) {
+                continue;
+            }
+            $lines[] = [
+                'kind' => 'deduction',
+                'code' => 'loan_repayment',
+                'name' => 'Loan repayment '.$loan->loan_no,
+                'amount' => round($amount, 2),
+                'source' => 'loan',
+                'loan_id' => $loan->id,
             ];
         }
 
@@ -59,7 +79,7 @@ class PayrollService
         return [
             'employee_id' => $employee->id,
             'employee_name' => $employee->full_name,
-            'job_title' => $employee->job_title,
+            'job_title' => $assignment?->job_title ?? $employee->job_title,
             'basic' => $basic,
             'earnings_total' => $earnings,
             'deductions_total' => $deductions,
@@ -73,13 +93,18 @@ class PayrollService
     public function generate(Company $company, array $data): PayrollRun
     {
         return DB::transaction(function () use ($company, $data) {
-            $employees = Employee::where('company_id', $company->id)
+            $assignments = EmployeeAssignment::where('company_id', $company->id)
                 ->where('is_active', true)
-                ->with('components')
-                ->orderBy('employee_no')
+                ->with([
+                    'employee.components',
+                    'employee.loans' => fn ($query) => $query->where('status', 'active'),
+                ])
+                ->join('employees', 'employees.id', '=', 'employee_assignments.employee_id')
+                ->orderBy('employees.employee_no')
+                ->select('employee_assignments.*')
                 ->get();
 
-            if ($employees->isEmpty()) {
+            if ($assignments->isEmpty()) {
                 throw new InvalidArgumentException('There are no active employees to pay.');
             }
 
@@ -95,8 +120,10 @@ class PayrollService
                 'created_by' => $data['user_id'] ?? null,
             ]);
 
-            foreach ($employees as $employee) {
-                $run->items()->create($this->computeItem($employee));
+            foreach ($assignments as $assignment) {
+                if ($assignment->employee) {
+                    $run->items()->create($this->computeItem($assignment->employee, [], $assignment));
+                }
             }
 
             return $this->refreshTotals($run);
@@ -117,16 +144,21 @@ class PayrollService
         return DB::transaction(function () use ($run, $adjustments, $userId) {
             if ($adjustments) {
                 $run->load('items.employee.components');
+                $run->load('items.employee.loans');
                 foreach ($run->items as $item) {
                     $extra = $adjustments[$item->employee_id] ?? [];
                     if ($extra && $item->employee) {
-                        $item->update($this->computeItem($item->employee, $extra));
+                        $assignment = EmployeeAssignment::where('employee_id', $item->employee_id)
+                            ->where('company_id', $run->company_id)
+                            ->first();
+                        $item->update($this->computeItem($item->employee, $extra, $assignment));
                     }
                 }
             }
 
             $run = $this->refreshTotals($run->fresh('items'));
             $this->postJournal($run, $userId);
+            $this->recordLoanRepayments($run, $userId);
 
             $run->update([
                 'status' => 'approved',
@@ -142,6 +174,7 @@ class PayrollService
     {
         $company = $run->company;
         $this->chart->ensurePayrollAccounts($company);
+        $this->chart->ensureEmployeeLoanAccount($company);
 
         $gross = round((float) $run->total_gross, 2);
         $net = round((float) $run->total_net, 2);
@@ -192,8 +225,48 @@ class PayrollService
         return match (strtolower($code)) {
             'paye', 'tax', 'paye_tax', 'income_tax' => $this->chart->findBySubtype($company, 'tax'),
             'pension', 'nssf', 'napsa' => $this->chart->findBySubtype($company, 'pension'),
+            'loan', 'loan_repayment', 'employee_loan' => $this->chart->findBySubtype($company, 'employee_loan'),
             default => $this->chart->findBySubtype($company, 'payroll_deduction'),
         };
+    }
+
+    protected function recordLoanRepayments(PayrollRun $run, int $userId): void
+    {
+        foreach ($run->items as $item) {
+            foreach ($item->lines as $line) {
+                if (($line['code'] ?? null) !== 'loan_repayment' || empty($line['loan_id'])) {
+                    continue;
+                }
+
+                $loan = EmployeeLoan::whereKey($line['loan_id'])->lockForUpdate()->first();
+                if (! $loan || $loan->status !== 'active') {
+                    continue;
+                }
+
+                $amount = min(round((float) $line['amount'], 2), round((float) $loan->outstanding_balance, 2));
+                if ($amount <= 0) {
+                    continue;
+                }
+
+                $loan->payments()->create([
+                    'payroll_run_id' => $run->id,
+                    'payroll_item_id' => $item->id,
+                    'date' => $run->pay_date->toDateString(),
+                    'amount' => $amount,
+                    'source' => 'payroll',
+                    'reference' => $run->reference,
+                    'created_by' => $userId,
+                ]);
+
+                $totalRepaid = round((float) $loan->total_repaid + $amount, 2);
+                $outstanding = round((float) $loan->principal - $totalRepaid, 2);
+                $loan->update([
+                    'total_repaid' => $totalRepaid,
+                    'outstanding_balance' => max($outstanding, 0),
+                    'status' => $outstanding <= 0.005 ? 'settled' : 'active',
+                ]);
+            }
+        }
     }
 
     protected function refreshTotals(PayrollRun $run): PayrollRun

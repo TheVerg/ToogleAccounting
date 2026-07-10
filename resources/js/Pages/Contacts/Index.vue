@@ -37,12 +37,32 @@ const destroy = (c) => {
     if (confirm(`Delete contact ${c.name}?`)) router.delete(`/contacts/${c.id}`, { preserveScroll: true });
 };
 
-const form = useForm({ type: 'customer', name: '', email: '', phone: '', address: '', is_active: true });
+const form = useForm({
+    type: 'customer',
+    name: '',
+    contact_person: '',
+    email: '',
+    phone: '',
+    tax_number: '',
+    address: '',
+    billing_address: '',
+    is_active: true,
+});
 
 const openCreate = () => { editing.value = null; form.reset(); showModal.value = true; };
 const openEdit = (c) => {
     editing.value = c;
-    Object.assign(form, { type: c.type, name: c.name, email: c.email ?? '', phone: c.phone ?? '', address: c.address ?? '', is_active: c.is_active });
+    Object.assign(form, {
+        type: c.type,
+        name: c.name,
+        contact_person: c.contact_person ?? '',
+        email: c.email ?? '',
+        phone: c.phone ?? '',
+        tax_number: c.tax_number ?? '',
+        address: c.address ?? '',
+        billing_address: c.billing_address ?? '',
+        is_active: c.is_active,
+    });
     showModal.value = true;
 };
 
@@ -101,6 +121,7 @@ const submitImport = () => {
                         <th class="px-4 py-3">Type</th>
                         <th class="px-4 py-3">Email</th>
                         <th class="px-4 py-3">Phone</th>
+                        <th class="px-4 py-3">Tax/VAT No.</th>
                         <th class="px-4 py-3">Status</th>
                         <th class="px-4 py-3"></th>
                     </tr>
@@ -111,6 +132,7 @@ const submitImport = () => {
                         <td class="px-4 py-2.5 capitalize text-gray-600">{{ c.type }}</td>
                         <td class="px-4 py-2.5 text-gray-500">{{ c.email ?? '—' }}</td>
                         <td class="px-4 py-2.5 text-gray-500">{{ c.phone ?? '—' }}</td>
+                        <td class="px-4 py-2.5 text-gray-500">{{ c.tax_number ?? '-' }}</td>
                         <td class="px-4 py-2.5">
                             <span :class="c.is_active ? 'text-green-700' : 'text-gray-400'">{{ c.is_active ? 'Active' : 'Inactive' }}</span>
                         </td>
@@ -120,7 +142,7 @@ const submitImport = () => {
                         </td>
                     </tr>
                     <tr v-if="!filteredContacts.length">
-                        <td colspan="6" class="px-4 py-8 text-center text-gray-400">{{ contacts.length ? 'No contacts match.' : 'No contacts yet.' }}</td>
+                        <td colspan="7" class="px-4 py-8 text-center text-gray-400">{{ contacts.length ? 'No contacts match.' : 'No contacts yet.' }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -144,6 +166,10 @@ const submitImport = () => {
                         </select>
                     </div>
                     <div>
+                        <label class="mb-1 block text-sm text-gray-600">Contact person</label>
+                        <input v-model="form.contact_person" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
                         <label class="mb-1 block text-sm text-gray-600">Email</label>
                         <input v-model="form.email" type="email" class="w-full rounded-md border-gray-300 text-sm" />
                     </div>
@@ -151,9 +177,17 @@ const submitImport = () => {
                         <label class="mb-1 block text-sm text-gray-600">Phone</label>
                         <input v-model="form.phone" class="w-full rounded-md border-gray-300 text-sm" />
                     </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Tax/VAT number</label>
+                        <input v-model="form.tax_number" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
                     <div class="sm:col-span-2">
                         <label class="mb-1 block text-sm text-gray-600">Address</label>
                         <textarea v-model="form.address" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="mb-1 block text-sm text-gray-600">Billing address</label>
+                        <textarea v-model="form.billing_address" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
                     </div>
                     <label v-if="editing" class="flex items-center gap-2 text-sm text-gray-600">
                         <input v-model="form.is_active" type="checkbox" class="rounded border-gray-300 text-brand-600" />

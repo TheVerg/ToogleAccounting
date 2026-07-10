@@ -31,6 +31,16 @@ class CompanyController extends Controller
             'type' => ['required', Rule::in(['holding', 'subsidiary'])],
             'parent_id' => ['nullable', 'integer', 'exists:companies,id'],
             'currency' => ['required', 'string', 'size:3'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:40'],
+            'address' => ['nullable', 'string'],
+            'tax_number' => ['nullable', 'string', 'max:255'],
+            'bank_name' => ['nullable', 'string', 'max:255'],
+            'bank_account_name' => ['nullable', 'string', 'max:255'],
+            'bank_account_number' => ['nullable', 'string', 'max:255'],
+            'bank_branch_code' => ['nullable', 'string', 'max:255'],
+            'bank_swift_code' => ['nullable', 'string', 'max:255'],
+            'payment_instructions' => ['nullable', 'string'],
         ]);
 
         $company = Company::create($data);
@@ -47,6 +57,16 @@ class CompanyController extends Controller
             'type' => ['required', Rule::in(['holding', 'subsidiary'])],
             'parent_id' => ['nullable', 'integer', 'exists:companies,id', Rule::notIn([$company->id])],
             'currency' => ['required', 'string', 'size:3'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:40'],
+            'address' => ['nullable', 'string'],
+            'tax_number' => ['nullable', 'string', 'max:255'],
+            'bank_name' => ['nullable', 'string', 'max:255'],
+            'bank_account_name' => ['nullable', 'string', 'max:255'],
+            'bank_account_number' => ['nullable', 'string', 'max:255'],
+            'bank_branch_code' => ['nullable', 'string', 'max:255'],
+            'bank_swift_code' => ['nullable', 'string', 'max:255'],
+            'payment_instructions' => ['nullable', 'string'],
             'is_active' => ['boolean'],
             'locked_before' => ['nullable', 'date'],
         ]);

@@ -15,7 +15,10 @@ class Company extends Model
     use Auditable, SoftDeletes;
 
     protected $fillable = [
-        'name', 'code', 'type', 'parent_id', 'currency', 'is_active', 'locked_before',
+        'name', 'code', 'type', 'parent_id', 'currency', 'email', 'phone', 'address',
+        'tax_number', 'bank_name', 'bank_account_name', 'bank_account_number',
+        'bank_branch_code', 'bank_swift_code', 'payment_instructions',
+        'is_active', 'locked_before',
     ];
 
     protected $casts = [

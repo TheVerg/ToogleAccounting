@@ -61,10 +61,10 @@ class ContactController extends Controller
     /** CSV template for bulk client/vendor import. */
     public function importTemplate(): \Symfony\Component\HttpFoundation\Response
     {
-        $csv = "Type,Name,Email,Phone,Address\n"
-            ."customer,Example Client Ltd,client@example.com,+263 771 000 000,1 Main Street\n"
-            ."vendor,Example Supplier (Pvt) Ltd,supplier@example.com,,\n"
-            ."both,Example Client & Supplier,,,\n";
+        $csv = "Type,Name,Contact Person,Email,Phone,Tax Number,Address,Billing Address\n"
+            ."customer,Example Client Ltd,Tariro Moyo,client@example.com,+263 771 000 000,VAT123,1 Main Street,Accounts Office 1 Main Street\n"
+            ."vendor,Example Supplier (Pvt) Ltd,,supplier@example.com,,,,\n"
+            ."both,Example Client & Supplier,,,,,,\n";
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
@@ -101,9 +101,12 @@ class ContactController extends Controller
                 'company_id' => $companyId,
                 'type' => $type,
                 'name' => $name,
-                'email' => trim($row[2] ?? '') ?: null,
-                'phone' => trim($row[3] ?? '') ?: null,
-                'address' => trim($row[4] ?? '') ?: null,
+                'contact_person' => trim($row[2] ?? '') ?: null,
+                'email' => trim($row[3] ?? '') ?: null,
+                'phone' => trim($row[4] ?? '') ?: null,
+                'tax_number' => trim($row[5] ?? '') ?: null,
+                'address' => trim($row[6] ?? '') ?: null,
+                'billing_address' => trim($row[7] ?? '') ?: null,
                 'is_active' => true,
             ]);
             $created++;
@@ -122,9 +125,12 @@ class ContactController extends Controller
         return $request->validate([
             'type' => ['required', Rule::in(['customer', 'vendor', 'both'])],
             'name' => ['required', 'string', 'max:255'],
+            'contact_person' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:40'],
+            'tax_number' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string'],
+            'billing_address' => ['nullable', 'string'],
             'is_active' => ['boolean'],
         ]);
     }

@@ -2,6 +2,77 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+    button.bg-brand-600,
+    a.bg-brand-600 {
+        background-color: #111111;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+        transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+    }
+
+    button.bg-brand-600:hover,
+    a.bg-brand-600:hover {
+        background-color: #000000;
+        box-shadow: 0 10px 18px -12px rgba(0, 0, 0, 0.55);
+        transform: translateY(-1px);
+    }
+
+    button.border-brand-600,
+    a.border-brand-600 {
+        border-color: #18181b;
+        color: #18181b;
+        background-color: #ffffff;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+        transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+    }
+
+    button.border-brand-600:hover,
+    a.border-brand-600:hover {
+        background-color: #f4f4f5;
+        box-shadow: 0 8px 16px -14px rgba(0, 0, 0, 0.45);
+        transform: translateY(-1px);
+    }
+
+    button.bg-green-600,
+    button.bg-green-700,
+    a.bg-green-600,
+    a.bg-green-700 {
+        box-shadow: 0 8px 16px -12px rgba(21, 128, 61, 0.55);
+        transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+    }
+
+    button.bg-blue-600,
+    a.bg-blue-600 {
+        box-shadow: 0 8px 16px -12px rgba(37, 99, 235, 0.55);
+        transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+    }
+
+    button.bg-amber-500,
+    a.bg-amber-500 {
+        box-shadow: 0 8px 16px -12px rgba(217, 119, 6, 0.6);
+        transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+    }
+
+    button.bg-red-600,
+    a.bg-red-600 {
+        box-shadow: 0 8px 16px -12px rgba(220, 38, 38, 0.55);
+        transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+    }
+
+    button.bg-green-600:hover,
+    button.bg-green-700:hover,
+    button.bg-blue-600:hover,
+    button.bg-amber-500:hover,
+    button.bg-red-600:hover,
+    a.bg-green-600:hover,
+    a.bg-green-700:hover,
+    a.bg-blue-600:hover,
+    a.bg-amber-500:hover,
+    a.bg-red-600:hover {
+        transform: translateY(-1px);
+    }
+}
+
 @layer utilities {
     /* Slim, unobtrusive scrollbar for the dark sidebar: no buttons/arrows,
        a rounded thumb that only stands out on hover. */

@@ -21,7 +21,7 @@ class StatementRegisterController extends ReportController
 {
     public function register(Request $request): Response
     {
-        $companyId = $request->user()->current_company_id;
+        $companyIds = $this->reportingCompanyIds($request);
         $filters = $request->validate([
             'type' => ['nullable', Rule::in(array_keys(FinancialStatement::TYPES))],
             'status' => ['nullable', Rule::in(['draft', 'approved', 'deleted'])],
@@ -30,8 +30,8 @@ class StatementRegisterController extends ReportController
         ]);
 
         $statements = FinancialStatement::withTrashed()
-            ->where('company_id', $companyId)
-            ->with(['generator:id,name', 'approver:id,name', 'deleter:id,name'])
+            ->whereIn('company_id', $companyIds)
+            ->with(['company:id,name,parent_id', 'company.parent:id,name', 'generator:id,name', 'approver:id,name', 'deleter:id,name'])
             ->when($filters['type'] ?? null, fn ($query, $type) => $query->where('type', $type))
             ->when($filters['status'] ?? null, function ($query, $status) {
                 if ($status === 'deleted') {
@@ -101,7 +101,7 @@ class StatementRegisterController extends ReportController
 
     public function show(Request $request, FinancialStatement $financialStatement): Response
     {
-        abort_unless($financialStatement->company_id === $request->user()->current_company_id, 403);
+        abort_unless($this->canViewCompany($request, $financialStatement->company_id), 403);
 
         return Inertia::render('Reports/RegisterShow', [
             'statement' => $financialStatement->load(['generator:id,name', 'approver:id,name']),
@@ -111,7 +111,7 @@ class StatementRegisterController extends ReportController
 
     public function approve(Request $request, FinancialStatement $financialStatement): RedirectResponse
     {
-        abort_unless($financialStatement->company_id === $request->user()->current_company_id, 403);
+        abort_unless($this->canViewCompany($request, $financialStatement->company_id), 403);
 
         if ($financialStatement->isApproved()) {
             return back()->with('error', 'This statement is already approved.');
@@ -140,7 +140,7 @@ class StatementRegisterController extends ReportController
 
     public function destroy(Request $request, FinancialStatement $financialStatement): RedirectResponse
     {
-        abort_unless($financialStatement->company_id === $request->user()->current_company_id, 403);
+        abort_unless($this->canViewCompany($request, $financialStatement->company_id), 403);
 
         if ($financialStatement->isApproved()) {
             return back()->with('error', 'Approved statements are locked and cannot be deleted. You can only view them.');

@@ -23,6 +23,7 @@ class InvoiceController extends Controller
     public function index(Request $request): Response
     {
         $companyId = $request->user()->current_company_id;
+        $companyIds = $this->reportingCompanyIds($request);
         $filters = $request->validate([
             'status' => ['nullable', Rule::in(['draft', 'sent', 'partially_paid', 'paid', 'void'])],
             'from' => ['nullable', 'date'],
@@ -30,11 +31,11 @@ class InvoiceController extends Controller
         ]);
 
         return Inertia::render('Income/Invoices', [
-            'invoices' => Invoice::where('company_id', $companyId)
+            'invoices' => Invoice::whereIn('company_id', $companyIds)
                 ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
                 ->when($filters['from'] ?? null, fn ($query, $from) => $query->whereDate('issue_date', '>=', $from))
                 ->when($filters['to'] ?? null, fn ($query, $to) => $query->whereDate('issue_date', '<=', $to))
-                ->with(['contact:id,name', 'items', 'payments',
+                ->with(['company:id,name,parent_id', 'company.parent:id,name', 'contact:id,name', 'items', 'payments',
                     'attachments:id,attachable_id,attachable_type,original_name'])
                 ->latest('issue_date')->latest('id')
                 ->paginate(15)->withQueryString(),
@@ -64,8 +65,9 @@ class InvoiceController extends Controller
         $companyId = $user->current_company_id;
 
         $data = $request->validate([
-            'contact_id' => ['required', 'integer',
+            'contact_id' => ['nullable', 'integer',
                 Rule::exists('contacts', 'id')->where('company_id', $companyId)],
+            'contact_name' => ['nullable', 'string', 'max:255', 'required_without:contact_id'],
             'issue_date' => ['required', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:issue_date'],
             'tax_rate_id' => ['nullable', 'integer', CompanyRules::taxRate($companyId)],
@@ -89,9 +91,19 @@ class InvoiceController extends Controller
             $taxRate = ! empty($data['tax_rate_id']) ? TaxRate::find($data['tax_rate_id']) : null;
             $taxAmount = $taxRate ? round($subtotal * ((float) $taxRate->rate / 100), 2) : 0;
 
+            $contactId = $data['contact_id'] ?? null;
+            if (! $contactId && ! empty($data['contact_name'])) {
+                $contactId = Contact::create([
+                    'company_id' => $companyId,
+                    'type' => 'customer',
+                    'name' => $data['contact_name'],
+                    'is_active' => true,
+                ])->id;
+            }
+
             $invoice = Invoice::create([
                 'company_id' => $companyId,
-                'contact_id' => $data['contact_id'],
+                'contact_id' => $contactId,
                 'invoice_no' => DocumentSequence::nextNo($companyId, 'INV', 'invoices', 'invoice_no'),
                 'issue_date' => $data['issue_date'],
                 'due_date' => $data['due_date'] ?? null,
@@ -126,17 +138,17 @@ class InvoiceController extends Controller
                 $accounting->issueInvoice($invoice->fresh(['items', 'contact', 'company']), $user->id);
             } catch (InvalidArgumentException $e) {
                 return back()->with('error',
-                    'Invoice '.$invoice->invoice_no.' was saved as a draft but could not be issued: '.$e->getMessage());
+                    'Revenue '.$invoice->invoice_no.' was saved as a draft but could not be issued: '.$e->getMessage());
             }
         }
 
-        return back()->with('success', 'Invoice '.$invoice->invoice_no.' created.');
+        return back()->with('success', 'Revenue '.$invoice->invoice_no.' created.');
     }
 
     public function issue(Request $request, Invoice $invoice, AccountingService $accounting): RedirectResponse
     {
         abort_unless($invoice->company_id === $request->user()->current_company_id, 403);
-        abort_unless($invoice->status === 'draft', 422, 'Only draft invoices can be issued.');
+        abort_unless($invoice->status === 'draft', 422, 'Only draft revenue records can be issued.');
 
         try {
             $accounting->issueInvoice($invoice->load(['items', 'contact', 'company']), $request->user()->id);
@@ -144,7 +156,7 @@ class InvoiceController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        return back()->with('success', 'Invoice issued and posted to the ledger.');
+        return back()->with('success', 'Revenue issued and posted to the ledger.');
     }
 
     public function recordPayment(Request $request, Invoice $invoice, AccountingService $accounting): RedirectResponse

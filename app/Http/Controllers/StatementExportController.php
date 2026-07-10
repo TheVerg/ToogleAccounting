@@ -16,7 +16,7 @@ class StatementExportController extends Controller
 {
     public function __invoke(Request $request, FinancialStatement $financialStatement): Response
     {
-        abort_unless($financialStatement->company_id === $request->user()->current_company_id, 403);
+        abort_unless($this->canViewCompany($request, $financialStatement->company_id), 403);
 
         $format = $request->query('format', 'csv');
         $title = $financialStatement->name;
@@ -38,7 +38,9 @@ class StatementExportController extends Controller
         }
 
         if ($format === 'pdf') {
-            return Pdf::loadView('exports.statement', compact('title', 'meta', 'headers', 'rows'))
+            $logo = $this->logoDataUri();
+
+            return Pdf::loadView('exports.statement', compact('title', 'meta', 'headers', 'rows', 'logo'))
                 ->download($filename.'.pdf');
         }
 

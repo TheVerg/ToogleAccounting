@@ -329,6 +329,37 @@ class ReportService
         ];
     }
 
+    /**
+     * Calendar-year monthly cash in/out trend for dashboard charting.
+     *
+     * @param  int[]  $companyIds
+     */
+    public function monthlyCashFlowTrend(array $companyIds, int $year): array
+    {
+        $start = Carbon::create($year, 1, 1)->startOfMonth();
+
+        return collect(range(0, 11))->map(function (int $offset) use ($companyIds, $start) {
+            $month = $start->copy()->addMonths($offset);
+            $cashFlow = $this->cashFlow(
+                $companyIds,
+                $month->copy()->startOfMonth()->toDateString(),
+                $month->copy()->endOfMonth()->toDateString(),
+            );
+
+            $inflows = collect($cashFlow['sections'])->sum('inflows');
+            $outflows = collect($cashFlow['sections'])->sum('outflows');
+
+            return [
+                'label' => $month->format('M'),
+                'period' => $month->format('Y-m'),
+                'inflows' => round($inflows, 2),
+                'outflows' => round($outflows, 2),
+                'net' => round($inflows - $outflows, 2),
+                'closing_balance' => $cashFlow['closing_balance'],
+            ];
+        })->all();
+    }
+
     public function budgetVsActual(Company $company, int $fiscalYear): array
     {
         $budget = Budget::with('lines.account')
