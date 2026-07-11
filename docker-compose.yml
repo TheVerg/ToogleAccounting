@@ -1,71 +1,102 @@
+name: holdco-accounting
+
+x-app: &app
+  build:
+    context: .
+    target: app
+  env_file:
+    - ${APP_ENV_FILE:-.env.production}
+  environment:
+    DB_ROOT_PASSWORD: ""
+  restart: unless-stopped
+  volumes:
+    - app_storage:/var/www/html/storage
+  networks:
+    - internal
+
 services:
-  app:
+  web:
     build:
       context: .
-      dockerfile: Dockerfile
-    env_file:
-      - .env.docker
-    environment:
-      AUTO_MIGRATE: "true"
+      target: web
+    restart: unless-stopped
     ports:
-      - "8000:8000"
-    volumes:
-      - .:/var/www/html
-      - vendor:/var/www/html/vendor
-      - app_storage:/var/www/html/storage
+      - "${HTTP_BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-8080}:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - internal
+
+  app:
+    <<: *app
+    healthcheck:
+      test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\", 9000) ? 0 : 1);'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
       mysql:
         condition: service_healthy
 
   queue:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    env_file:
-      - .env.docker
-    command: php artisan queue:listen --tries=1 --timeout=0
-    volumes:
-      - .:/var/www/html
-      - vendor:/var/www/html/vendor
-      - app_storage:/var/www/html/storage
+    <<: *app
+    command: php artisan queue:work --sleep=3 --tries=3 --timeout=120 --max-time=3600
+    stop_grace_period: 2m
     depends_on:
       mysql:
         condition: service_healthy
 
-  vite:
-    image: node:22-alpine
-    working_dir: /var/www/html
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
-    env_file:
-      - .env.docker
-    ports:
-      - "5173:5173"
-    volumes:
-      - .:/var/www/html
-      - node_modules:/var/www/html/node_modules
+  scheduler:
+    <<: *app
+    command: php artisan schedule:work
     depends_on:
-      - app
+      mysql:
+        condition: service_healthy
 
   mysql:
     image: mysql:8.4
+    restart: unless-stopped
     environment:
-      MYSQL_DATABASE: holdco
-      MYSQL_USER: holdco
-      MYSQL_PASSWORD: holdco
-      MYSQL_ROOT_PASSWORD: root
-    ports:
-      - "3306:3306"
+      MYSQL_DATABASE: ${DB_DATABASE:-holdco}
+      MYSQL_USER: ${DB_USERNAME:-holdco}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in the shell or deployment environment}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in the shell or deployment environment}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 30s
+    networks:
+      - internal
+
+  backup:
+    build:
+      context: .
+      target: backup
+    profiles: ["maintenance"]
+    env_file:
+      - ${APP_ENV_FILE:-.env.production}
+    environment:
+      BACKUP_DIR: /backups
+      DB_HOST: mysql
+    volumes:
+      - app_storage:/var/www/html/storage:ro
+      - ./backups:/backups
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - internal
 
 volumes:
   app_storage:
   mysql_data:
-  node_modules:
-  vendor:
+
+networks:
+  internal:
+    driver: bridge

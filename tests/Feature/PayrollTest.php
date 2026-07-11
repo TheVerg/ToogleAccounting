@@ -53,6 +53,14 @@ class PayrollTest extends TestCase
             'base_salary' => 5000, 'is_active' => true,
         ]);
 
+        $employee->assignments()->create([
+            'company_id' => $this->company->id,
+            'job_title' => 'Analyst',
+            'pay_frequency' => 'monthly',
+            'base_salary' => 5000,
+            'is_active' => true,
+        ]);
+
         // Recurring: +800 transport (fixed), +10% housing, -pension 5%, -PAYE 1250 fixed.
         $employee->components()->createMany([
             ['kind' => 'earning', 'code' => 'transport', 'name' => 'Transport', 'calc_type' => 'fixed', 'amount' => 800, 'is_active' => true],

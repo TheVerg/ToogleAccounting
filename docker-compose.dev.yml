@@ -1,0 +1,61 @@
+services:
+  app:
+    env_file:
+      - .env.docker
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/var/www/html
+      - dev_vendor:/var/www/html/vendor
+      - dev_storage:/var/www/html/storage
+
+  queue:
+    env_file:
+      - .env.docker
+    command: php artisan queue:work --sleep=1 --tries=3 --timeout=120
+    volumes:
+      - .:/var/www/html
+      - dev_vendor:/var/www/html/vendor
+      - dev_storage:/var/www/html/storage
+
+  scheduler:
+    env_file:
+      - .env.docker
+    volumes:
+      - .:/var/www/html
+      - dev_vendor:/var/www/html/vendor
+      - dev_storage:/var/www/html/storage
+
+  web:
+    profiles: ["production"]
+
+  vite:
+    image: node:22-alpine
+    working_dir: /var/www/html
+    command: npm run dev -- --host 0.0.0.0
+    env_file:
+      - .env.docker
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/var/www/html
+      - dev_node_modules:/var/www/html/node_modules
+    depends_on:
+      - app
+    networks:
+      - internal
+
+  mysql:
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-holdco}
+      MYSQL_USER: ${DB_USERNAME:-holdco}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-holdco}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+    ports:
+      - "127.0.0.1:3306:3306"
+
+volumes:
+  dev_node_modules:
+  dev_storage:
+  dev_vendor:

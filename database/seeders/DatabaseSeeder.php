@@ -17,26 +17,12 @@ class DatabaseSeeder extends Seeder
 
         $chart = app(ChartOfAccountsService::class);
 
-        $holding = Company::firstOrCreate(
+        $holding = Company::updateOrCreate(
             ['code' => 'HOLD'],
-            ['name' => 'Holding Company Ltd', 'type' => 'holding', 'currency' => 'USD'],
+            ['name' => 'Horizon Equity Group', 'type' => 'holding', 'currency' => 'USD'],
         );
 
-        $subA = Company::firstOrCreate(
-            ['code' => 'SUB-A'],
-            ['name' => 'Subsidiary Alpha Ltd', 'type' => 'subsidiary',
-                'parent_id' => $holding->id, 'currency' => 'USD'],
-        );
-
-        $subB = Company::firstOrCreate(
-            ['code' => 'SUB-B'],
-            ['name' => 'Subsidiary Beta Ltd', 'type' => 'subsidiary',
-                'parent_id' => $holding->id, 'currency' => 'USD'],
-        );
-
-        foreach ([$holding, $subA, $subB] as $company) {
-            $chart->seedDefaultChart($company);
-        }
+        $chart->seedDefaultChart($holding);
 
         TaxRate::firstOrCreate(
             ['company_id' => null, 'name' => 'VAT 15%'],
@@ -47,27 +33,28 @@ class DatabaseSeeder extends Seeder
             ['rate' => 0.0, 'is_active' => true],
         );
 
-        $admin = User::firstOrCreate(
-            ['email' => 'admin@holdco.test'],
-            ['name' => 'System Admin', 'password' => Hash::make('password'),
-                'current_company_id' => $holding->id],
-        );
-        // Roles are per company (spatie teams): the admin is system-admin
-        // in every company, the accountant only in Subsidiary Alpha.
-        foreach ([$holding, $subA, $subB] as $company) {
-            setPermissionsTeamId($company->id);
-            $admin->unsetRelation('roles')->syncRoles(['system-admin']);
-        }
-        $admin->companies()->syncWithoutDetaching([$holding->id, $subA->id, $subB->id]);
+        $adminEmail = 'admin@horizon-equity.com';
+        $admin = User::where('email', $adminEmail)->first()
+            ?? User::where('email', 'admin@holdco.test')->first();
 
-        $accountant = User::firstOrCreate(
-            ['email' => 'accountant@holdco.test'],
-            ['name' => 'Alpha Accountant', 'password' => Hash::make('password'),
-                'current_company_id' => $subA->id],
-        );
-        setPermissionsTeamId($subA->id);
-        $accountant->unsetRelation('roles')->syncRoles(['accountant']);
-        $accountant->companies()->syncWithoutDetaching([$subA->id]);
+        if ($admin) {
+            $admin->forceFill(['email' => $adminEmail])->save();
+        } else {
+            $initialPassword = config('auth.bootstrap_admin_password');
+            if (! $initialPassword) {
+                throw new \RuntimeException('ADMIN_INITIAL_PASSWORD is required when creating the production administrator.');
+            }
+            $admin = User::create([
+                'email' => $adminEmail,
+                'name' => 'System Admin',
+                'password' => Hash::make($initialPassword),
+                'must_change_password' => true,
+                'current_company_id' => $holding->id,
+            ]);
+        }
+        setPermissionsTeamId($holding->id);
+        $admin->unsetRelation('roles')->syncRoles(['system-admin']);
+        $admin->companies()->syncWithoutDetaching([$holding->id]);
         setPermissionsTeamId(null);
     }
 }

@@ -8,6 +8,7 @@ use App\Services\AccountingService;
 use App\Services\ChartOfAccountsService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class CompanyAdminTest extends TestCase
@@ -78,5 +79,44 @@ class CompanyAdminTest extends TestCase
             ->assertSessionHas('error');
 
         $this->assertDatabaseHas('companies', ['id' => $this->home->id]);
+    }
+
+    public function test_admin_creates_user_with_one_time_temporary_password(): void
+    {
+        $response = $this->actingAs($this->admin)->post('/admin/users', [
+            'name' => 'New User',
+            'email' => 'new.user@example.com',
+            'assignments' => [[
+                'company_id' => $this->home->id,
+                'role' => 'accountant',
+            ]],
+        ]);
+
+        $response->assertSessionHasNoErrors()->assertSessionHas('temporary_password');
+        $temporary = session('temporary_password');
+        $user = User::where('email', 'new.user@example.com')->firstOrFail();
+
+        $this->assertTrue($user->must_change_password);
+        $this->assertTrue(Hash::check($temporary['password'], $user->password));
+        $this->assertGreaterThanOrEqual(16, strlen($temporary['password']));
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'temporary_password_issued',
+            'auditable_id' => $user->id,
+        ]);
+    }
+
+    public function test_admin_reset_replaces_password_and_flags_user(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($this->admin)
+            ->post('/admin/users/'.$user->id.'/reset-password');
+
+        $response->assertSessionHas('temporary_password');
+        $temporary = session('temporary_password');
+        $user->refresh();
+
+        $this->assertTrue($user->must_change_password);
+        $this->assertTrue(Hash::check($temporary['password'], $user->password));
     }
 }

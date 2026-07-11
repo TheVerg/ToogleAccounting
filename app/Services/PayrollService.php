@@ -93,8 +93,8 @@ class PayrollService
     public function generate(Company $company, array $data): PayrollRun
     {
         return DB::transaction(function () use ($company, $data) {
-            $assignments = EmployeeAssignment::where('company_id', $company->id)
-                ->where('is_active', true)
+            $assignments = EmployeeAssignment::where('employee_assignments.company_id', $company->id)
+                ->where('employee_assignments.is_active', true)
                 ->with([
                     'employee.components',
                     'employee.loans' => fn ($query) => $query->where('status', 'active'),

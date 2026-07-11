@@ -1,20 +1,15 @@
 #!/usr/bin/env sh
 set -eu
 
-if [ ! -d vendor ] || [ ! -f vendor/autoload.php ]; then
-    composer install --no-interaction --prefer-dist
+if [ "${APP_ENV:-production}" = "production" ]; then
+    if [ -z "${APP_KEY:-}" ]; then
+        echo "APP_KEY is required in production." >&2
+        exit 1
+    fi
+
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
 fi
 
-if [ ! -f .env ]; then
-    cp .env.example .env
-fi
-
-if [ -z "${APP_KEY:-}" ] && ! grep -q '^APP_KEY=base64:' .env 2>/dev/null; then
-    php artisan key:generate --force
-fi
-
-if [ "${AUTO_MIGRATE:-false}" = "true" ]; then
-    php artisan migrate --force
-fi
-
-exec "$@"
+exec gosu www-data "$@"

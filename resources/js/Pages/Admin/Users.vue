@@ -1,8 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
-import PasswordInput from '@/Components/PasswordInput.vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
 const props = defineProps({ users: Array, roles: Array, companies: Array, employees: Array });
@@ -10,7 +9,9 @@ const props = defineProps({ users: Array, roles: Array, companies: Array, employ
 const showModal = ref(false);
 const editing = ref(null);
 
-const form = useForm({ name: '', email: '', password: '', employee_id: '', assignments: [] });
+const page = usePage();
+const form = useForm({ name: '', email: '', employee_id: '', assignments: [] });
+const temporaryPassword = computed(() => page.props.flash?.temporaryPassword);
 
 const companyName = (id) => props.companies.find((c) => c.id === id)?.name ?? `#${id}`;
 const employeeLabel = (employee) => `${employee.full_name} · ${employee.company_name ?? 'No company'}`;
@@ -42,7 +43,7 @@ const openCreate = () => {
 const openEdit = (u) => {
     editing.value = u;
     Object.assign(form, {
-        name: u.name, email: u.email, password: '',
+        name: u.name, email: u.email,
         employee_id: u.employee?.id ?? '',
         assignments: u.assignments.map((a) => ({ ...a })),
     });
@@ -58,6 +59,14 @@ const submit = () => {
 const destroy = (u) => {
     if (confirm(`Delete user ${u.name}?`)) router.delete(`/admin/users/${u.id}`, { preserveScroll: true });
 };
+
+const resetPassword = (u) => {
+    if (confirm(`Generate a new temporary password for ${u.name}? Their other sessions will be signed out.`)) {
+        router.post(`/admin/users/${u.id}/reset-password`, {}, { preserveScroll: true });
+    }
+};
+
+const copyTemporaryPassword = () => navigator.clipboard.writeText(temporaryPassword.value.password);
 </script>
 
 <template>
@@ -70,12 +79,22 @@ const destroy = (u) => {
             </button>
         </template>
 
+        <div v-if="temporaryPassword" class="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+            <p class="font-semibold">Temporary password — shown once</p>
+            <p class="mt-1">Share this securely with {{ temporaryPassword.email }}. They must replace it at first login.</p>
+            <div class="mt-3 flex items-center gap-3">
+                <code class="rounded bg-white px-3 py-2 font-mono text-base">{{ temporaryPassword.password }}</code>
+                <button type="button" class="text-brand-700 hover:underline" @click="copyTemporaryPassword">Copy</button>
+            </div>
+        </div>
+
         <div class="overflow-x-auto rounded-lg bg-white shadow-sm">
             <table class="w-full text-sm">
                 <thead class="border-b bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                     <tr>
                         <th class="px-4 py-3">Name</th>
                         <th class="px-4 py-3">Email</th>
+                        <th class="px-4 py-3">Password</th>
                         <th class="px-4 py-3">Linked employee</th>
                         <th class="px-4 py-3">Role per company</th>
                         <th class="px-4 py-3"></th>
@@ -85,6 +104,10 @@ const destroy = (u) => {
                     <tr v-for="u in users" :key="u.id" class="border-b last:border-0 hover:bg-gray-50">
                         <td class="px-4 py-2.5 font-medium text-gray-800">{{ u.name }}</td>
                         <td class="px-4 py-2.5 text-gray-500">{{ u.email }}</td>
+                        <td class="px-4 py-2.5">
+                            <span v-if="u.must_change_password" class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Temporary</span>
+                            <span v-else class="text-xs text-green-700">Set by user</span>
+                        </td>
                         <td class="px-4 py-2.5 text-gray-500">{{ linkedEmployeeName(u) }}</td>
                         <td class="px-4 py-2.5">
                             <span
@@ -98,6 +121,7 @@ const destroy = (u) => {
                         </td>
                         <td class="px-4 py-2.5 text-right">
                             <button class="text-sm text-brand-600 hover:underline" @click="openEdit(u)">Edit</button>
+                            <button class="ml-3 text-sm text-amber-700 hover:underline" @click="resetPassword(u)">Reset password</button>
                             <button class="ml-3 text-sm text-red-600 hover:underline" @click="destroy(u)">Delete</button>
                         </td>
                     </tr>
@@ -118,13 +142,9 @@ const destroy = (u) => {
                         <input v-model="form.email" type="email" class="w-full rounded-md border-gray-300 text-sm" required />
                         <p v-if="form.errors.email" class="mt-1 text-xs text-red-600">{{ form.errors.email }}</p>
                     </div>
-                    <div class="sm:col-span-2">
-                        <label class="mb-1 block text-sm text-gray-600">
-                            Password {{ editing ? '(leave blank to keep current)' : '' }}
-                        </label>
-                        <PasswordInput v-model="form.password" class="w-full text-sm" :required="!editing" autocomplete="new-password" />
-                        <p v-if="form.errors.password" class="mt-1 text-xs text-red-600">{{ form.errors.password }}</p>
-                    </div>
+                    <p v-if="!editing" class="sm:col-span-2 text-sm text-gray-500">
+                        A unique temporary password will be generated and shown once after creation.
+                    </p>
                     <div class="sm:col-span-2">
                         <label class="mb-1 block text-sm text-gray-600">Linked employee</label>
                         <select v-model="form.employee_id" class="w-full rounded-md border-gray-300 text-sm">

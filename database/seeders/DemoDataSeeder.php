@@ -31,18 +31,32 @@ class DemoDataSeeder extends Seeder
 {
     public function run(): void
     {
-        $this->call(DatabaseSeeder::class); // companies, charts, users, roles, tax rates
+        $this->call(DatabaseSeeder::class); // clean Horizon company, chart, admin, roles, tax rates
 
         $holding = Company::where('code', 'HOLD')->firstOrFail();
-        $subA = Company::where('code', 'SUB-A')->firstOrFail();
-        $admin = User::where('email', 'admin@holdco.test')->firstOrFail();
+        $admin = User::where('email', 'admin@horizon-equity.com')->firstOrFail();
+        $subA = Company::firstOrCreate(
+            ['code' => 'SUB-A'],
+            [
+                'name' => 'Subsidiary Alpha Ltd',
+                'type' => 'subsidiary',
+                'parent_id' => $holding->id,
+                'currency' => 'USD',
+            ],
+        );
+
+        $chart = app(ChartOfAccountsService::class);
+        $chart->seedDefaultChart($subA);
+        setPermissionsTeamId($subA->id);
+        $admin->unsetRelation('roles')->syncRoles(['system-admin']);
+        $admin->companies()->syncWithoutDetaching([$subA->id]);
+        setPermissionsTeamId(null);
 
         if (Invoice::where('company_id', $subA->id)->exists()) {
             return; // demo data already seeded
         }
 
         $acc = app(AccountingService::class);
-        $chart = app(ChartOfAccountsService::class);
         $vat = TaxRate::whereNull('company_id')->where('name', 'VAT 15%')->firstOrFail();
 
         $holdBank = $chart->findBySubtype($holding, 'bank');
@@ -168,6 +182,15 @@ class DemoDataSeeder extends Seeder
                 'department' => 'Finance', 'contract_type' => 'permanent', 'pay_frequency' => 'monthly',
                 'start_date' => '2026-01-01', 'base_salary' => $e['base'],
                 'payment_account_id' => $bank->id, 'is_active' => true, 'created_by' => $admin->id,
+            ]);
+            $employee->assignments()->create([
+                'company_id' => $subA->id,
+                'job_title' => $e['title'],
+                'department' => 'Finance',
+                'pay_frequency' => 'monthly',
+                'start_date' => '2026-01-01',
+                'base_salary' => $e['base'],
+                'is_active' => true,
             ]);
             foreach ($e['components'] as [$kind, $code, $cname, $calc, $amt]) {
                 $employee->components()->create([

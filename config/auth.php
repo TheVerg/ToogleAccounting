@@ -114,4 +114,9 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    'bootstrap_admin_password' => env(
+        'ADMIN_INITIAL_PASSWORD',
+        env('APP_ENV', 'production') === 'production' ? null : 'password',
+    ),
+
 ];

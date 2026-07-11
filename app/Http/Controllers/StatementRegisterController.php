@@ -143,7 +143,13 @@ class StatementRegisterController extends ReportController
         abort_unless($this->canViewCompany($request, $financialStatement->company_id), 403);
 
         if ($financialStatement->isApproved()) {
-            return back()->with('error', 'Approved statements are locked and cannot be deleted. You can only view them.');
+            $data = $request->validate([
+                'force' => ['required', 'accepted'],
+                'reason' => ['required', 'string', 'max:255'],
+            ]);
+            AuditLog::record('statement_force_deleted', $financialStatement, [
+                'reason' => ['old' => null, 'new' => $data['reason']],
+            ]);
         }
 
         $financialStatement->forceFill(['deleted_by' => $request->user()->id])->save();

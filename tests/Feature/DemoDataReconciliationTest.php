@@ -104,9 +104,12 @@ class DemoDataReconciliationTest extends TestCase
 
     public function test_imported_statement_matches_the_generated_balances(): void
     {
-        $admin = User::where('email', 'admin@holdco.test')->firstOrFail();
+        $admin = User::where('email', 'admin@horizon-equity.com')->firstOrFail();
         setPermissionsTeamId($this->subA->id);
-        $admin->forceFill(['current_company_id' => $this->subA->id])->save();
+        $admin->forceFill([
+            'current_company_id' => $this->subA->id,
+            'must_change_password' => false,
+        ])->save();
 
         // Fill the trial-balance template with the known reconciled figures.
         $csv = "Code,Account,Debit,Credit\n"
@@ -141,9 +144,12 @@ class DemoDataReconciliationTest extends TestCase
 
     public function test_templates_download_with_expected_line_items(): void
     {
-        $admin = User::where('email', 'admin@holdco.test')->firstOrFail();
+        $admin = User::where('email', 'admin@horizon-equity.com')->firstOrFail();
         setPermissionsTeamId($this->subA->id);
-        $admin->forceFill(['current_company_id' => $this->subA->id])->save();
+        $admin->forceFill([
+            'current_company_id' => $this->subA->id,
+            'must_change_password' => false,
+        ])->save();
 
         $csv = $this->actingAs($admin)
             ->get('/statements/import/template?type=balance-sheet')

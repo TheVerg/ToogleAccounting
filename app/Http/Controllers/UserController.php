@@ -10,8 +10,9 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Spatie\Permission\Models\Role;
@@ -37,6 +38,7 @@ class UserController extends Controller
                     'id' => $u->id,
                     'name' => $u->name,
                     'email' => $u->email,
+                    'must_change_password' => $u->must_change_password,
                     'employee' => $u->employee
                         ? [
                             'id' => $u->employee->id,
@@ -72,7 +74,6 @@ class UserController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8'],
             'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
             'assignments' => ['required', 'array', 'min:1'],
             'assignments.*.company_id' => ['required', 'integer', 'distinct', 'exists:companies,id'],
@@ -80,18 +81,24 @@ class UserController extends Controller
         ]);
         $this->validateEmployeeLink($request, $data['employee_id'] ?? null);
 
-        DB::transaction(function () use ($data) {
+        $temporaryPassword = Str::password(16);
+
+        DB::transaction(function () use ($data, $temporaryPassword) {
             $user = User::create([
                 'name' => $data['name'],
                 'email' => $data['email'],
-                'password' => Hash::make($data['password']),
+                'password' => Hash::make($temporaryPassword),
+                'must_change_password' => true,
                 'current_company_id' => $data['assignments'][0]['company_id'],
             ]);
             $this->syncAccessAudited($user, $data['assignments']);
             $this->syncEmployeeLink($user, $data['employee_id'] ?? null);
+            AuditLog::record('temporary_password_issued', $user);
         });
 
-        return back()->with('success', 'User created.');
+        return back()
+            ->with('success', 'User created. Share the temporary password securely; it will not be shown again.')
+            ->with('temporary_password', ['email' => $data['email'], 'password' => $temporaryPassword]);
     }
 
     public function update(Request $request, User $user): RedirectResponse
@@ -99,7 +106,6 @@ class UserController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'password' => ['nullable', 'string', 'min:8'],
             'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
             'assignments' => ['required', 'array', 'min:1'],
             'assignments.*.company_id' => ['required', 'integer', 'distinct', 'exists:companies,id'],
@@ -109,9 +115,6 @@ class UserController extends Controller
 
         DB::transaction(function () use ($data, $user) {
             $user->fill(['name' => $data['name'], 'email' => $data['email']]);
-            if (! empty($data['password'])) {
-                $user->password = Hash::make($data['password']);
-            }
             $user->save();
             $this->syncAccessAudited($user, $data['assignments']);
             $this->syncEmployeeLink($user, $data['employee_id'] ?? null);
@@ -123,6 +126,24 @@ class UserController extends Controller
         });
 
         return back()->with('success', 'User updated.');
+    }
+
+    public function resetPassword(User $user): RedirectResponse
+    {
+        $temporaryPassword = Str::password(16);
+
+        $user->forceFill([
+            'password' => Hash::make($temporaryPassword),
+            'must_change_password' => true,
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        DB::table(config('session.table', 'sessions'))->where('user_id', $user->id)->delete();
+        AuditLog::record('temporary_password_issued', $user);
+
+        return back()
+            ->with('success', 'Temporary password generated. The user must replace it at next login.')
+            ->with('temporary_password', ['email' => $user->email, 'password' => $temporaryPassword]);
     }
 
     public function destroy(Request $request, User $user): RedirectResponse
