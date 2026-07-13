@@ -81,6 +81,33 @@ class CompanyAdminTest extends TestCase
         $this->assertDatabaseHas('companies', ['id' => $this->home->id]);
     }
 
+    public function test_system_admin_has_global_permissions_in_a_new_company(): void
+    {
+        $this->actingAs($this->admin)->post('/companies', [
+            'name' => 'New Subsidiary',
+            'code' => 'NEW-SUB',
+            'type' => 'subsidiary',
+            'parent_id' => $this->home->id,
+            'currency' => 'USD',
+        ])->assertSessionHasNoErrors();
+
+        $subsidiary = Company::where('code', 'NEW-SUB')->firstOrFail();
+
+        // No duplicate per-company role is needed: system-admin is global.
+        $this->assertDatabaseMissing('model_has_roles', [
+            'model_id' => $this->admin->id,
+            'model_type' => $this->admin->getMorphClass(),
+            'team_id' => $subsidiary->id,
+        ]);
+
+        $this->actingAs($this->admin)->post('/switch-company', [
+            'company_id' => $subsidiary->id,
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($this->admin)->get('/accounts')->assertOk();
+        $this->actingAs($this->admin)->get('/admin/roles')->assertOk();
+    }
+
     public function test_admin_creates_user_with_one_time_temporary_password(): void
     {
         $response = $this->actingAs($this->admin)->post('/admin/users', [

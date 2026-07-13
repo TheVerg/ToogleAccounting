@@ -20,7 +20,8 @@ const sidebarOpen = ref(false);
 const userMenuOpen = ref(false);
 const dismissed = ref({ success: false, error: false });
 
-const canDo = (permission) => user.value?.permissions?.includes(permission);
+const canDo = (permission) =>
+    user.value?.is_system_admin || user.value?.permissions?.includes(permission);
 
 const initials = computed(() =>
     (user.value?.name ?? '')

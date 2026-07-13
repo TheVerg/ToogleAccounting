@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
@@ -132,21 +133,13 @@ const closeExport = () => {
                         <th class="px-4 py-3">From</th>
                         <th class="px-4 py-3">To / Category</th>
                         <th class="px-4 py-3">Payee</th>
+                        <th class="px-4 py-3 text-center">Supporting document</th>
                         <th class="px-4 py-3 text-right">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-for="p in payments.data" :key="p.id" class="border-b last:border-0 hover:bg-gray-50">
-                        <td class="px-4 py-2.5 font-mono text-xs">
-                            {{ p.payment_no }}
-                            <a
-                                v-if="p.attachments?.length"
-                                :href="`/attachments/${p.attachments[0].id}`"
-                                class="ml-1 text-brand-500 hover:text-brand-700"
-                                :title="p.attachments[0].original_name"
-                                @click.stop
-                            >📎</a>
-                        </td>
+                        <td class="px-4 py-2.5 font-mono text-xs">{{ p.payment_no }}</td>
                         <td class="px-4 py-2.5 text-gray-500">{{ fmtDate(p.date) }}</td>
                         <td class="px-4 py-2.5">
                             <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="p.kind === 'transfer' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'">
@@ -156,10 +149,11 @@ const closeExport = () => {
                         <td class="px-4 py-2.5 text-gray-600">{{ p.from_account?.name }}</td>
                         <td class="px-4 py-2.5 text-gray-600">{{ p.kind === 'transfer' ? p.to_account?.name : p.category_account?.name }}</td>
                         <td class="px-4 py-2.5 text-gray-500">{{ p.contact?.name ?? '—' }}</td>
+                        <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="p.attachments?.[0]" /></td>
                         <td class="px-4 py-2.5 text-right font-medium">{{ money(p.amount) }}</td>
                     </tr>
                     <tr v-if="!payments.data.length">
-                        <td colspan="7" class="px-4 py-8 text-center text-gray-400">No payments yet.</td>
+                        <td colspan="8" class="px-4 py-8 text-center text-gray-400">No payments yet.</td>
                     </tr>
                 </tbody>
             </table>

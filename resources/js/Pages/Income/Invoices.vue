@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
@@ -186,6 +187,7 @@ const statusBadge = {
                         <th class="px-4 py-3">Issued</th>
                         <th class="px-4 py-3">Due</th>
                         <th class="px-4 py-3">Status</th>
+                        <th class="px-4 py-3 text-center">Supporting document</th>
                         <th class="px-4 py-3 text-right">Total</th>
                         <th class="px-4 py-3 text-right">Balance</th>
                         <th class="px-4 py-3"></th>
@@ -193,16 +195,7 @@ const statusBadge = {
                 </thead>
                 <tbody>
                     <tr v-for="inv in invoices.data" :key="inv.id" class="border-b last:border-0 hover:bg-gray-50">
-                        <td class="px-4 py-2.5 font-mono text-xs">
-                            {{ inv.invoice_no }}
-                            <a
-                                v-if="inv.attachments?.length"
-                                :href="`/attachments/${inv.attachments[0].id}`"
-                                class="ml-1 text-brand-500 hover:text-brand-700"
-                                :title="inv.attachments[0].original_name"
-                                @click.stop
-                            >📎</a>
-                        </td>
+                        <td class="px-4 py-2.5 font-mono text-xs">{{ inv.invoice_no }}</td>
                         <td class="px-4 py-2.5">{{ inv.contact?.name }}</td>
                         <td class="px-4 py-2.5 text-slate-600">{{ inv.company?.name ?? 'N/A' }}</td>
                         <td class="px-4 py-2.5 text-slate-500">{{ inv.company?.parent?.name ?? '-' }}</td>
@@ -213,6 +206,7 @@ const statusBadge = {
                                 {{ inv.status.replace('_', ' ') }}
                             </span>
                         </td>
+                        <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="inv.attachments?.[0]" /></td>
                         <td class="px-4 py-2.5 text-right font-medium">{{ money(inv.total) }}</td>
                         <td class="px-4 py-2.5 text-right" :class="Number(inv.total) - Number(inv.amount_paid) > 0 ? 'text-amber-700' : 'text-green-700'">
                             {{ money(Number(inv.total) - Number(inv.amount_paid)) }}
@@ -234,7 +228,7 @@ const statusBadge = {
                         </td>
                     </tr>
                     <tr v-if="!invoices.data.length">
-                        <td colspan="10" class="px-4 py-8 text-center text-gray-400">No revenue records yet.</td>
+                        <td colspan="11" class="px-4 py-8 text-center text-gray-400">No revenue records yet.</td>
                     </tr>
                 </tbody>
             </table>

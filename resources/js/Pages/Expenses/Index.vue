@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import ExpenseTabs from '@/Components/ExpenseTabs.vue';
 import Modal from '@/Components/Modal.vue';
+import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
@@ -182,6 +183,7 @@ const closeExport = () => {
                         <th class="px-4 py-3">Paid from</th>
                         <th class="px-4 py-3">Vendor</th>
                         <th class="px-4 py-3">Description</th>
+                        <th class="px-4 py-3 text-center">Supporting document</th>
                         <th class="px-4 py-3 text-right">Total</th>
                     </tr>
                 </thead>
@@ -196,20 +198,12 @@ const closeExport = () => {
                         <td class="px-4 py-2.5">{{ e.account?.name }}</td>
                         <td class="px-4 py-2.5 text-gray-600">{{ e.paid_from_account?.name }}</td>
                         <td class="px-4 py-2.5 text-gray-500">{{ e.contact?.name ?? '—' }}</td>
-                        <td class="px-4 py-2.5 text-gray-500">
-                            {{ e.description ?? '—' }}
-                            <a
-                                v-if="e.attachments?.length"
-                                :href="`/attachments/${e.attachments[0].id}`"
-                                class="ml-1 text-brand-500 hover:text-brand-700"
-                                :title="e.attachments[0].original_name"
-                                @click.stop
-                            >📎</a>
-                        </td>
+                        <td class="px-4 py-2.5 text-gray-500">{{ e.description ?? '—' }}</td>
+                        <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="e.attachments?.[0]" /></td>
                         <td class="px-4 py-2.5 text-right font-medium text-red-700">{{ money(e.total) }}</td>
                     </tr>
                     <tr v-if="!expenses.data.length">
-                        <td colspan="7" class="px-4 py-8 text-center text-gray-400">No expenses yet.</td>
+                        <td colspan="8" class="px-4 py-8 text-center text-gray-400">No expenses yet.</td>
                     </tr>
                 </tbody>
             </table>

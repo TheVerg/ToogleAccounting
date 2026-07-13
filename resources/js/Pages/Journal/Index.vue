@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
@@ -105,6 +106,7 @@ const statusBadge = {
                         <th class="px-4 py-3">No.</th>
                         <th class="px-4 py-3">Description</th>
                         <th class="px-4 py-3">Status</th>
+                        <th class="px-4 py-3 text-center">Supporting document</th>
                         <th class="px-4 py-3 text-right">Amount</th>
                         <th class="px-4 py-3"></th>
                     </tr>
@@ -114,19 +116,11 @@ const statusBadge = {
                         <tr class="cursor-pointer border-b hover:bg-gray-50" @click="expanded = expanded === entry.id ? null : entry.id">
                             <td class="px-4 py-2.5 text-gray-500">{{ fmtDate(entry.date) }}</td>
                             <td class="px-4 py-2.5 font-mono text-xs text-gray-500">{{ entry.entry_no }}</td>
-                            <td class="px-4 py-2.5">
-                                {{ entry.description }}
-                                <a
-                                    v-if="entry.attachments?.length"
-                                    :href="`/attachments/${entry.attachments[0].id}`"
-                                    class="ml-1 text-brand-500 hover:text-brand-700"
-                                    :title="entry.attachments[0].original_name"
-                                    @click.stop
-                                >📎</a>
-                            </td>
+                            <td class="px-4 py-2.5">{{ entry.description }}</td>
                             <td class="px-4 py-2.5">
                                 <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="statusBadge[entry.status]">{{ entry.status }}</span>
                             </td>
+                            <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="entry.attachments?.[0]" /></td>
                             <td class="px-4 py-2.5 text-right font-medium">
                                 {{ money(entry.lines.reduce((s, l) => s + Number(l.debit), 0)) }}
                             </td>
@@ -139,7 +133,7 @@ const statusBadge = {
                             </td>
                         </tr>
                         <tr v-if="expanded === entry.id" class="border-b bg-gray-50/60">
-                            <td colspan="6" class="px-8 py-3">
+                            <td colspan="7" class="px-8 py-3">
                                 <table class="w-full text-xs">
                                     <thead class="text-left uppercase tracking-wide text-gray-400">
                                         <tr><th class="py-1">Account</th><th class="py-1">Memo</th><th class="py-1 text-right">Debit</th><th class="py-1 text-right">Credit</th></tr>
@@ -157,7 +151,7 @@ const statusBadge = {
                         </tr>
                     </template>
                     <tr v-if="!entries.data.length">
-                        <td colspan="6" class="px-4 py-8 text-center text-gray-400">No journal entries yet.</td>
+                        <td colspan="7" class="px-4 py-8 text-center text-gray-400">No journal entries yet.</td>
                     </tr>
                 </tbody>
             </table>

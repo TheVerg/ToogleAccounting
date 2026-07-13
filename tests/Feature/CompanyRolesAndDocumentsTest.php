@@ -103,7 +103,8 @@ class CompanyRolesAndDocumentsTest extends TestCase
 
         $this->actingAs($this->accountant)
             ->get('/attachments/'.$attachment->id)
-            ->assertOk();
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private');
 
         // A user of an unrelated company cannot fetch it.
         $outsider = User::factory()->create();

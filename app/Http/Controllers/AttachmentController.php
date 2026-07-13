@@ -21,6 +21,10 @@ class AttachmentController extends Controller
         );
         abort_unless(Storage::disk('local')->exists($attachment->path), 404);
 
-        return Storage::disk('local')->download($attachment->path, $attachment->original_name);
+        return Storage::disk('local')->download(
+            $attachment->path,
+            $attachment->original_name,
+            ['Cache-Control' => 'private, no-store'],
+        );
     }
 }

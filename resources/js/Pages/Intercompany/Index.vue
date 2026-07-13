@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { money, fmtDate } from '@/lib/helpers';
@@ -62,6 +63,7 @@ const submit = () => {
                         <th class="px-4 py-3">To</th>
                         <th class="px-4 py-3">Type</th>
                         <th class="px-4 py-3">Description</th>
+                        <th class="px-4 py-3 text-center">Supporting document</th>
                         <th class="px-4 py-3 text-right">Amount</th>
                     </tr>
                 </thead>
@@ -75,20 +77,12 @@ const submit = () => {
                                 {{ t.type }}
                             </span>
                         </td>
-                        <td class="px-4 py-2.5 text-gray-500">
-                            {{ t.description ?? '—' }}
-                            <a
-                                v-if="t.attachments?.length"
-                                :href="`/attachments/${t.attachments[0].id}`"
-                                class="ml-1 text-brand-500 hover:text-brand-700"
-                                :title="t.attachments[0].original_name"
-                                @click.stop
-                            >📎</a>
-                        </td>
+                        <td class="px-4 py-2.5 text-gray-500">{{ t.description ?? '—' }}</td>
+                        <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="t.attachments?.[0]" /></td>
                         <td class="px-4 py-2.5 text-right font-medium">{{ money(t.amount) }}</td>
                     </tr>
                     <tr v-if="!transfers.data.length">
-                        <td colspan="6" class="px-4 py-8 text-center text-gray-400">No intercompany transfers yet.</td>
+                        <td colspan="7" class="px-4 py-8 text-center text-gray-400">No intercompany transfers yet.</td>
                     </tr>
                 </tbody>
             </table>
