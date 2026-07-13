@@ -106,6 +106,12 @@ class CompanyRolesAndDocumentsTest extends TestCase
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private');
 
+        $this->actingAs($this->accountant)
+            ->get('/attachments/'.$attachment->id.'/preview')
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('Content-Type', 'application/pdf');
+
         // A user of an unrelated company cannot fetch it.
         $outsider = User::factory()->create();
         $gamma = Company::create(['name' => 'Gamma', 'code' => 'G', 'type' => 'holding']);
@@ -117,6 +123,10 @@ class CompanyRolesAndDocumentsTest extends TestCase
 
         $this->actingAs($outsider)
             ->get('/attachments/'.$attachment->id)
+            ->assertForbidden();
+
+        $this->actingAs($outsider)
+            ->get('/attachments/'.$attachment->id.'/preview')
             ->assertForbidden();
     }
 }

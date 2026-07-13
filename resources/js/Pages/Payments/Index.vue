@@ -16,6 +16,7 @@ const props = defineProps({
 
 const showModal = ref(false);
 const showExport = ref(false);
+const kindLabel = (kind) => kind === 'transfer' ? 'Account Transfer' : 'Payment';
 const filterState = reactive({
     status: props.filters?.status ?? '',
     from: props.filters?.from ?? '',
@@ -91,11 +92,11 @@ const closeExport = () => {
 
         <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div>
-                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Status</label>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Payment type</label>
                 <select v-model="filterState.status" class="rounded-md border-gray-300 py-1.5 text-sm">
                     <option value="">All payments</option>
-                    <option value="outgoing">Money out</option>
-                    <option value="transfer">Transfer</option>
+                    <option value="outgoing">Payment</option>
+                    <option value="transfer">Account Transfer</option>
                 </select>
             </div>
             <div>
@@ -129,7 +130,7 @@ const closeExport = () => {
                     <tr>
                         <th class="px-4 py-3">No.</th>
                         <th class="px-4 py-3">Date</th>
-                        <th class="px-4 py-3">Kind</th>
+                        <th class="px-4 py-3">Payment type</th>
                         <th class="px-4 py-3">From</th>
                         <th class="px-4 py-3">To / Category</th>
                         <th class="px-4 py-3">Payee</th>
@@ -143,7 +144,7 @@ const closeExport = () => {
                         <td class="px-4 py-2.5 text-gray-500">{{ fmtDate(p.date) }}</td>
                         <td class="px-4 py-2.5">
                             <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="p.kind === 'transfer' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'">
-                                {{ p.kind }}
+                                {{ kindLabel(p.kind) }}
                             </span>
                         </td>
                         <td class="px-4 py-2.5 text-gray-600">{{ p.from_account?.name }}</td>
@@ -183,8 +184,8 @@ const closeExport = () => {
                         <label class="mb-1 block text-sm text-gray-600">Payment type</label>
                         <select v-model="exportForm.status" class="w-full rounded-md border-gray-300 text-sm">
                             <option value="">All payments</option>
-                            <option value="outgoing">Money out</option>
-                            <option value="transfer">Transfer</option>
+                            <option value="outgoing">Payment</option>
+                            <option value="transfer">Account Transfer</option>
                         </select>
                     </div>
                     <div>
@@ -211,7 +212,7 @@ const closeExport = () => {
 
                 <div class="mb-4 flex gap-2">
                     <button
-                        v-for="k in [{ v: 'outgoing', l: 'Money out' }, { v: 'transfer', l: 'Transfer between accounts' }]"
+                        v-for="k in [{ v: 'outgoing', l: 'Payment' }, { v: 'transfer', l: 'Account Transfer' }]"
                         :key="k.v" type="button"
                         class="rounded-md px-3 py-1.5 text-sm font-medium"
                         :class="form.kind === k.v ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600'"

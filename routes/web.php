@@ -39,6 +39,7 @@ Route::get('/', fn () => redirect()->route('login'));
 Route::middleware(['auth', 'company'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::post('/switch-company', CompanySwitchController::class)->name('company.switch');
+    Route::get('/attachments/{attachment}/preview', [AttachmentController::class, 'preview'])->name('attachments.preview');
     Route::get('/attachments/{attachment}', [AttachmentController::class, 'download'])->name('attachments.download');
 
     // Chart of accounts (categories)
