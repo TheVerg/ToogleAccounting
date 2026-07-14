@@ -7,6 +7,7 @@ use App\Models\Attachment;
 use App\Models\JournalEntry;
 use App\Services\AccountingService;
 use App\Services\JournalService;
+use App\Services\TransactionOmitService;
 use App\Support\CompanyRules;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -94,5 +95,21 @@ class JournalEntryController extends Controller
         }
 
         return back()->with('success', 'Entry reversed with an opposite entry.');
+    }
+
+    public function omit(Request $request, JournalEntry $entry, TransactionOmitService $service): RedirectResponse
+    {
+        abort_unless($request->user()->isSystemAdmin(), 403);
+        abort_unless($entry->company_id === $request->user()->current_company_id, 403);
+        $data = $request->validate(['reason' => ['required', 'string', 'min:10', 'max:500']]);
+
+        try {
+            $service->omitEntry($entry, $data['reason']);
+        } catch (\Throwable $e) {
+            report($e);
+            return back()->with('error', 'This transaction has dependent records and cannot be omitted yet. Reverse or remove those dependent records first.');
+        }
+
+        return back()->with('success', 'Transaction omitted from its source area and the journal. Statements will reflect the change.');
     }
 }

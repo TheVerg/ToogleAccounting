@@ -1,8 +1,9 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import OmitTransactionModal from '@/Components/OmitTransactionModal.vue';
 import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
 
@@ -10,6 +11,8 @@ const props = defineProps({ entries: Object, accounts: Array, filters: Object })
 
 const showModal = ref(false);
 const expanded = ref(null);
+const omitEntry = ref(null);
+const isSystemAdmin = computed(() => usePage().props.auth.user?.is_system_admin === true);
 const filterState = reactive({
     status: props.filters?.status ?? '',
     from: props.filters?.from ?? '',
@@ -130,6 +133,7 @@ const statusBadge = {
                                     class="text-xs text-red-600 hover:underline"
                                     @click.stop="reverse(entry)"
                                 >Reverse</button>
+                                <button v-if="isSystemAdmin" class="ml-3 text-xs font-medium text-red-700 hover:underline" @click.stop="omitEntry = entry">Omit</button>
                             </td>
                         </tr>
                         <tr v-if="expanded === entry.id" class="border-b bg-gray-50/60">
@@ -245,5 +249,12 @@ const statusBadge = {
                 </div>
             </form>
         </Modal>
+
+        <OmitTransactionModal
+            :show="!!omitEntry"
+            :url="omitEntry ? `/journal/${omitEntry.id}/omit` : ''"
+            :label="omitEntry?.entry_no"
+            @close="omitEntry = null"
+        />
     </AppLayout>
 </template>

@@ -1,9 +1,10 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import OmitTransactionModal from '@/Components/OmitTransactionModal.vue';
 import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
 
 defineProps({
@@ -13,6 +14,8 @@ defineProps({
 });
 
 const showModal = ref(false);
+const omitTarget = ref(null);
+const isSystemAdmin = computed(() => usePage().props.auth.user?.is_system_admin === true);
 
 const form = useForm({
     type: 'contribution',
@@ -68,6 +71,7 @@ const submit = () => {
                         <th class="px-4 py-3">Description</th>
                         <th class="px-4 py-3 text-center">Supporting document</th>
                         <th class="px-4 py-3 text-right">Amount</th>
+                        <th v-if="isSystemAdmin" class="px-4 py-3"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -85,9 +89,12 @@ const submit = () => {
                         <td class="px-4 py-2.5 text-right font-medium" :class="t.type === 'contribution' ? 'text-green-700' : 'text-red-700'">
                             {{ t.type === 'contribution' ? '+' : '−' }}{{ money(t.amount) }}
                         </td>
+                        <td v-if="isSystemAdmin" class="px-4 py-2.5 text-right">
+                            <button class="text-xs font-medium text-red-700 hover:underline" @click="omitTarget = t">Omit</button>
+                        </td>
                     </tr>
                     <tr v-if="!transactions.data.length">
-                        <td colspan="7" class="px-4 py-8 text-center text-gray-400">
+                        <td :colspan="isSystemAdmin ? 8 : 7" class="px-4 py-8 text-center text-gray-400">
                             No equity transactions yet. Record the owner's funding here.
                         </td>
                     </tr>
@@ -160,5 +167,12 @@ const submit = () => {
                 </div>
             </form>
         </Modal>
+
+        <OmitTransactionModal
+            :show="!!omitTarget"
+            :url="omitTarget ? `/equity/${omitTarget.id}/omit` : ''"
+            :label="omitTarget ? `The ${omitTarget.type} by ${omitTarget.owner_name} on ${fmtDate(omitTarget.date)}` : ''"
+            @close="omitTarget = null"
+        />
     </AppLayout>
 </template>

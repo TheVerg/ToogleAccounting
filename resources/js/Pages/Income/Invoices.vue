@@ -1,9 +1,10 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import OmitTransactionModal from '@/Components/OmitTransactionModal.vue';
 import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
 
 const props = defineProps({
@@ -17,9 +18,12 @@ const props = defineProps({
 
 const page = usePage();
 const currentCompanyId = computed(() => page.props.auth?.currentCompany?.id);
+const isSystemAdmin = computed(() => page.props.auth.user?.is_system_admin === true);
 const showCreate = ref(false);
 const payingInvoice = ref(null);
 const showExport = ref(false);
+const omitTarget = ref(null);
+const customerMode = ref('existing');
 const filterState = reactive({
     status: props.filters?.status ?? '',
     from: props.filters?.from ?? '',
@@ -42,6 +46,15 @@ const form = useForm({
     issue: true,
     document: null,
     items: [{ account_id: '', description: '', quantity: 1, unit_price: '' }],
+});
+
+// Only one of the two customer fields applies at a time.
+watch(customerMode, (mode) => {
+    if (mode === 'existing') {
+        form.contact_name = '';
+    } else {
+        form.contact_id = '';
+    }
 });
 
 const subtotal = computed(() =>
@@ -71,7 +84,7 @@ const openPay = (invoice) => {
 const submitCreate = () => {
     form.post('/income/invoices', {
         preserveScroll: true,
-        onSuccess: () => { showCreate.value = false; form.reset(); },
+        onSuccess: () => { showCreate.value = false; form.reset(); customerMode.value = 'existing'; },
     });
 };
 
@@ -225,6 +238,11 @@ const statusBadge = {
                                 class="ml-2 rounded-md bg-green-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-800"
                                 @click="openPay(inv)"
                             >Record payment</button>
+                            <button
+                                v-if="isSystemAdmin && belongsToSelectedCompany(inv)"
+                                class="ml-2 text-xs font-medium text-red-700 hover:underline"
+                                @click="omitTarget = inv"
+                            >Omit</button>
                         </td>
                     </tr>
                     <tr v-if="!invoices.data.length">
@@ -287,21 +305,33 @@ const statusBadge = {
         <Modal :show="showCreate" max-width="4xl" @close="showCreate = false">
             <form class="p-6" @submit.prevent="submitCreate">
                 <h2 class="mb-4 text-lg font-semibold text-gray-800">New revenue</h2>
+
+                <div class="mb-4 flex gap-2">
+                    <button
+                        v-for="k in [{ v: 'existing', l: 'Existing customer' }, { v: 'new', l: 'New customer' }]"
+                        :key="k.v" type="button"
+                        class="rounded-md px-3 py-1.5 text-sm font-medium"
+                        :class="customerMode === k.v ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600'"
+                        @click="customerMode = k.v"
+                    >{{ k.l }}</button>
+                </div>
+
                 <div class="grid gap-4 sm:grid-cols-4">
-                    <div>
+                    <div v-if="customerMode === 'existing'">
                         <label class="mb-1 block text-sm text-gray-600">Customer</label>
-                        <select v-model="form.contact_id" class="w-full rounded-md border-gray-300 text-sm">
-                            <option value="">Select existing customer</option>
+                        <select v-model="form.contact_id" class="w-full rounded-md border-gray-300 text-sm" required>
+                            <option value="" disabled>Select customer…</option>
                             <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
                         </select>
                         <p v-if="form.errors.contact_id" class="mt-1 text-xs text-red-600">{{ form.errors.contact_id }}</p>
                     </div>
-                    <div>
+                    <div v-else>
                         <label class="mb-1 block text-sm text-gray-600">New customer name</label>
                         <input
                             v-model="form.contact_name"
                             class="w-full rounded-md border-gray-300 text-sm"
-                            placeholder="Type here if not in the list"
+                            placeholder="Type the customer's name"
+                            required
                         />
                         <p v-if="form.errors.contact_name" class="mt-1 text-xs text-red-600">{{ form.errors.contact_name }}</p>
                     </div>
@@ -443,5 +473,12 @@ const statusBadge = {
                 </div>
             </form>
         </Modal>
+
+        <OmitTransactionModal
+            :show="!!omitTarget"
+            :url="omitTarget ? `/income/invoices/${omitTarget.id}/omit` : ''"
+            :label="omitTarget?.invoice_no"
+            @close="omitTarget = null"
+        />
     </AppLayout>
 </template>

@@ -31,6 +31,7 @@ use App\Http\Controllers\StatementExportController;
 use App\Http\Controllers\StatementImportController;
 use App\Http\Controllers\StatementRegisterController;
 use App\Http\Controllers\TaxRateController;
+use App\Http\Controllers\TransactionOmitController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -59,6 +60,13 @@ Route::middleware(['auth', 'company'])->group(function () {
         ->middleware('permission:journals.create')->name('journal.store');
     Route::post('/journal/{entry}/reverse', [JournalEntryController::class, 'reverse'])
         ->middleware('permission:journals.reverse')->name('journal.reverse');
+    Route::delete('/journal/{entry}/omit', [JournalEntryController::class, 'omit'])->name('journal.omit');
+
+    // Omit transactions from their source areas (system admin only, enforced in controller)
+    Route::delete('/income/invoices/{invoice}/omit', [TransactionOmitController::class, 'invoice'])->name('invoices.omit');
+    Route::delete('/expenses/{expense}/omit', [TransactionOmitController::class, 'expense'])->name('expenses.omit');
+    Route::delete('/payments/{payment}/omit', [TransactionOmitController::class, 'payment'])->name('payments.omit');
+    Route::delete('/equity/{equityTransaction}/omit', [TransactionOmitController::class, 'equity'])->name('equity.omit');
 
     // Contacts
     Route::get('/contacts', [ContactController::class, 'index'])

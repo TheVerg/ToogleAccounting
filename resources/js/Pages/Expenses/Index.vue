@@ -2,8 +2,9 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import ExpenseTabs from '@/Components/ExpenseTabs.vue';
 import Modal from '@/Components/Modal.vue';
+import OmitTransactionModal from '@/Components/OmitTransactionModal.vue';
 import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
 
@@ -21,6 +22,8 @@ const props = defineProps({
 const showModal = ref(false);
 const showTopUp = ref(false);
 const showExport = ref(false);
+const omitTarget = ref(null);
+const isSystemAdmin = computed(() => usePage().props.auth.user?.is_system_admin === true);
 const filterState = reactive({
     status: props.filters?.status ?? '',
     from: props.filters?.from ?? '',
@@ -185,6 +188,7 @@ const closeExport = () => {
                         <th class="px-4 py-3">Description</th>
                         <th class="px-4 py-3 text-center">Supporting document</th>
                         <th class="px-4 py-3 text-right">Total</th>
+                        <th v-if="isSystemAdmin" class="px-4 py-3"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -201,9 +205,12 @@ const closeExport = () => {
                         <td class="px-4 py-2.5 text-gray-500">{{ e.description ?? '—' }}</td>
                         <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="e.attachments?.[0]" /></td>
                         <td class="px-4 py-2.5 text-right font-medium text-red-700">{{ money(e.total) }}</td>
+                        <td v-if="isSystemAdmin" class="px-4 py-2.5 text-right">
+                            <button class="text-xs font-medium text-red-700 hover:underline" @click="omitTarget = e">Omit</button>
+                        </td>
                     </tr>
                     <tr v-if="!expenses.data.length">
-                        <td colspan="8" class="px-4 py-8 text-center text-gray-400">No expenses yet.</td>
+                        <td :colspan="isSystemAdmin ? 9 : 8" class="px-4 py-8 text-center text-gray-400">No expenses yet.</td>
                     </tr>
                 </tbody>
             </table>
@@ -382,5 +389,12 @@ const closeExport = () => {
                 </div>
             </form>
         </Modal>
+
+        <OmitTransactionModal
+            :show="!!omitTarget"
+            :url="omitTarget ? `/expenses/${omitTarget.id}/omit` : ''"
+            :label="omitTarget?.expense_no"
+            @close="omitTarget = null"
+        />
     </AppLayout>
 </template>
