@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { can } from '@/lib/helpers';
@@ -131,14 +132,14 @@ const destroy = (company) => {
                         </p>
                     </div>
 
-                    <div v-if="can('companies.manage')" class="flex items-center gap-3">
-                        <button class="text-sm text-brand-600 hover:underline" @click="openEdit(parent)">Edit</button>
-                        <button
-                            class="text-sm hover:underline"
-                            :class="childrenOf(parent.id).length ? 'cursor-not-allowed text-slate-300' : 'text-red-600'"
+                    <div v-if="can('companies.manage')" class="flex items-center gap-2">
+                        <RowAction variant="primary" @click="openEdit(parent)">Edit</RowAction>
+                        <RowAction
+                            variant="danger"
+                            :disabled="!!childrenOf(parent.id).length"
                             :title="childrenOf(parent.id).length ? 'Delete its subsidiaries first' : 'Delete company'"
                             @click="destroy(parent)"
-                        >Delete</button>
+                        >Delete</RowAction>
                     </div>
                 </div>
 
@@ -157,11 +158,11 @@ const destroy = (company) => {
                                 <td class="w-24 px-4 py-2.5">
                                     <span :class="c.is_active ? 'text-green-700' : 'text-slate-400'">{{ c.is_active ? 'Active' : 'Inactive' }}</span>
                                 </td>
-                                <td class="w-32 px-5 py-2.5 text-right">
-                                    <template v-if="can('companies.manage')">
-                                        <button class="text-sm text-brand-600 hover:underline" @click="openEdit(c)">Edit</button>
-                                        <button class="ml-3 text-sm text-red-600 hover:underline" @click="destroy(c)">Delete</button>
-                                    </template>
+                                <td class="w-40 px-5 py-2.5">
+                                    <div v-if="can('companies.manage')" class="flex flex-wrap items-center justify-end gap-2">
+                                        <RowAction variant="primary" @click="openEdit(c)">Edit</RowAction>
+                                        <RowAction variant="danger" @click="destroy(c)">Delete</RowAction>
+                                    </div>
                                 </td>
                             </tr>
                         </tbody>

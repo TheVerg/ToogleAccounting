@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { can } from '@/lib/helpers';
@@ -112,13 +113,15 @@ const typeBadge = {
                             <span :class="a.is_active ? 'text-green-700' : 'text-gray-400'">{{ a.is_active ? 'Active' : 'Inactive' }}</span>
                         </td>
                         <td class="px-4 py-2.5 text-gray-500">{{ a.statement_group ?? '—' }}</td>
-                        <td class="px-4 py-2.5 text-right">
-                            <button v-if="can('accounts.manage')" class="text-sm text-brand-600 hover:underline" @click="openEdit(a)">Edit</button>
-                            <button
-                                v-if="can('accounts.manage') && !a.is_system && a.journal_lines_count === 0"
-                                class="ml-3 text-sm text-red-600 hover:underline"
-                                @click="destroy(a)"
-                            >Delete</button>
+                        <td class="px-4 py-2.5">
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <RowAction v-if="can('accounts.manage')" variant="primary" @click="openEdit(a)">Edit</RowAction>
+                                <RowAction
+                                    v-if="can('accounts.manage') && !a.is_system && a.journal_lines_count === 0"
+                                    variant="danger"
+                                    @click="destroy(a)"
+                                >Delete</RowAction>
+                            </div>
                         </td>
                     </tr>
                 </tbody>

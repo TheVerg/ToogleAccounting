@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import OmitTransactionModal from '@/Components/OmitTransactionModal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
@@ -90,7 +91,7 @@ const submit = () => {
                             {{ t.type === 'contribution' ? '+' : '−' }}{{ money(t.amount) }}
                         </td>
                         <td v-if="isSystemAdmin" class="px-4 py-2.5 text-right">
-                            <button class="text-xs font-medium text-red-700 hover:underline" @click="omitTarget = t">Omit</button>
+                            <RowAction variant="danger" @click="omitTarget = t">Omit</RowAction>
                         </td>
                     </tr>
                     <tr v-if="!transactions.data.length">

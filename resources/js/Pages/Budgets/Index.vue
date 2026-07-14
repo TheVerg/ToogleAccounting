@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { can } from '@/lib/helpers';
@@ -68,14 +69,13 @@ const deleteBudget = (budget) => {
                 </div>
 
                 <div class="mt-5 flex items-center justify-end gap-3">
-                    <button
+                    <RowAction
                         v-if="b.status === 'draft' && can('budgets.manage')"
-                        type="button"
-                        class="text-sm font-medium text-red-600 hover:underline"
+                        variant="danger"
                         @click="deleteBudget(b)"
                     >
                         Delete
-                    </button>
+                    </RowAction>
                     <Link :href="`/budgets/${b.id}`" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">
                         Open
                     </Link>

@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
@@ -118,20 +119,14 @@ const statusBadge = {
                         <td class="px-5 py-3">
                             <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="statusBadge[r.status]">{{ r.status }}</span>
                         </td>
-                        <td class="px-5 py-3 text-right whitespace-nowrap">
-                            <Link :href="`/payroll/${r.id}`" class="text-sm font-medium text-brand-600 hover:underline">View</Link>
-                            <template v-if="!r.deleted_at && can('payroll.manage')">
-                                <button
-                                    v-if="r.status === 'draft'"
-                                    class="ml-3 text-sm text-red-600 hover:underline"
-                                    @click="destroyDraft(r)"
-                                >Delete</button>
-                                <button
-                                    v-else-if="r.status === 'approved'"
-                                    class="ml-3 text-sm text-red-600 hover:underline"
-                                    @click="openForce(r)"
-                                >Force delete</button>
-                            </template>
+                        <td class="px-5 py-3 whitespace-nowrap">
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <RowAction variant="primary" :to="`/payroll/${r.id}`">View</RowAction>
+                                <template v-if="!r.deleted_at && can('payroll.manage')">
+                                    <RowAction v-if="r.status === 'draft'" variant="danger" @click="destroyDraft(r)">Delete</RowAction>
+                                    <RowAction v-else-if="r.status === 'approved'" variant="danger" @click="openForce(r)">Force delete</RowAction>
+                                </template>
+                            </div>
                         </td>
                     </tr>
                     <tr v-if="!runs.data.length">

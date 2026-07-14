@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, Link } from '@inertiajs/vue3';
 
 defineProps({ statements: Array });
@@ -28,12 +29,11 @@ defineProps({ statements: Array });
                             <div class="font-bold text-slate-800">{{ s.name }}</div>
                             <div class="text-xs text-slate-500">{{ s.description }}</div>
                         </td>
-                        <td class="px-5 py-3 text-right">
-                            <Link :href="s.href" class="text-sm font-medium text-brand-600 hover:underline">View</Link>
-                            <Link
-                                href="/statements/register"
-                                class="ml-3 text-sm text-slate-500 hover:text-brand-700 hover:underline"
-                            >Register</Link>
+                        <td class="px-5 py-3">
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <RowAction variant="primary" :to="s.href">View</RowAction>
+                                <RowAction variant="neutral" to="/statements/register">Register</RowAction>
+                            </div>
                         </td>
                     </tr>
                 </tbody>

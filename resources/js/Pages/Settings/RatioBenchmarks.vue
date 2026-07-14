@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import RowAction from '@/Components/RowAction.vue';
 import TabBar from '@/Components/TabBar.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
@@ -162,7 +163,7 @@ const removeCustom = (ratio) => {
                             {{ c.target_min ?? '—' }} … {{ c.target_max ?? '—' }}
                         </td>
                         <td class="px-5 py-3 text-right">
-                            <button v-if="canManage" class="text-xs text-red-600 hover:underline" @click="removeCustom(c)">Remove</button>
+                            <RowAction v-if="canManage" variant="danger" @click="removeCustom(c)">Remove</RowAction>
                         </td>
                     </tr>
                 </tbody>

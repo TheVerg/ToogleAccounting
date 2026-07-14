@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { can } from '@/lib/helpers';
@@ -81,9 +82,11 @@ const submit = () => {
                         <td class="px-4 py-2.5">
                             <span :class="t.is_active ? 'text-green-700' : 'text-gray-400'">{{ t.is_active ? 'Active' : 'Inactive' }}</span>
                         </td>
-                        <td class="px-4 py-2.5 text-right">
-                            <button class="text-sm text-brand-600 hover:underline" @click="openEdit(t)">Edit</button>
-                            <button v-if="can('taxes.manage')" class="ml-3 text-sm text-red-600 hover:underline" @click="destroy(t)">Delete</button>
+                        <td class="px-4 py-2.5">
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <RowAction variant="primary" @click="openEdit(t)">Edit</RowAction>
+                                <RowAction v-if="can('taxes.manage')" variant="danger" @click="destroy(t)">Delete</RowAction>
+                            </div>
                         </td>
                     </tr>
                 </tbody>

@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
@@ -69,9 +70,9 @@ const destroy = (r) => {
                         {{ r.name }}
                         <span v-if="r.is_protected" class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase text-gray-500">protected</span>
                     </h2>
-                    <div v-if="!r.is_protected" class="flex gap-3">
-                        <button class="text-sm text-brand-600 hover:underline" @click="openEdit(r)">Edit</button>
-                        <button class="text-sm text-red-600 hover:underline" @click="destroy(r)">Delete</button>
+                    <div v-if="!r.is_protected" class="flex gap-2">
+                        <RowAction variant="primary" @click="openEdit(r)">Edit</RowAction>
+                        <RowAction variant="danger" @click="destroy(r)">Delete</RowAction>
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-1">

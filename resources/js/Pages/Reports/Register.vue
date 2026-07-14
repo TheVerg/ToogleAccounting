@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { can, fmtDate } from '@/lib/helpers';
@@ -195,23 +196,14 @@ const statusBadge = {
                             <div>{{ s.generator?.name ?? '—' }}</div>
                             <div class="text-xs text-slate-400">{{ fmtDate(s.created_at) }}</div>
                         </td>
-                        <td class="px-5 py-3 text-right whitespace-nowrap">
-                            <Link
-                                :href="`/statements/register/${s.id}`"
-                                class="text-sm font-medium text-brand-600 hover:underline"
-                            >View</Link>
-                            <template v-if="!s.deleted_at">
-                                <button
-                                    v-if="s.status === 'draft' && canApprove"
-                                    class="ml-3 text-sm font-medium text-green-700 hover:underline"
-                                    @click="approve(s)"
-                                >Approve</button>
-                                <button
-                                    v-if="s.status === 'draft' && canApprove"
-                                    class="ml-3 text-sm text-red-600 hover:underline"
-                                    @click="destroyDraft(s)"
-                                >Delete</button>
-                            </template>
+                        <td class="px-5 py-3 whitespace-nowrap">
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <RowAction variant="primary" :to="`/statements/register/${s.id}`">View</RowAction>
+                                <template v-if="!s.deleted_at">
+                                    <RowAction v-if="s.status === 'draft' && canApprove" variant="success" @click="approve(s)">Approve</RowAction>
+                                    <RowAction v-if="s.status === 'draft' && canApprove" variant="danger" @click="destroyDraft(s)">Delete</RowAction>
+                                </template>
+                            </div>
                         </td>
                     </tr>
                     <tr v-if="!statements.data.length">

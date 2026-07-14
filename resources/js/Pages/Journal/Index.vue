@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import OmitTransactionModal from '@/Components/OmitTransactionModal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
@@ -127,13 +128,15 @@ const statusBadge = {
                             <td class="px-4 py-2.5 text-right font-medium">
                                 {{ money(entry.lines.reduce((s, l) => s + Number(l.debit), 0)) }}
                             </td>
-                            <td class="px-4 py-2.5 text-right">
-                                <button
-                                    v-if="can('journals.reverse') && entry.status === 'posted'"
-                                    class="text-xs text-red-600 hover:underline"
-                                    @click.stop="reverse(entry)"
-                                >Reverse</button>
-                                <button v-if="isSystemAdmin" class="ml-3 text-xs font-medium text-red-700 hover:underline" @click.stop="omitEntry = entry">Omit</button>
+                            <td class="px-4 py-2.5">
+                                <div class="flex flex-wrap items-center justify-end gap-2">
+                                    <RowAction
+                                        v-if="can('journals.reverse') && entry.status === 'posted'"
+                                        variant="warning"
+                                        @click.stop="reverse(entry)"
+                                    >Reverse</RowAction>
+                                    <RowAction v-if="isSystemAdmin" variant="danger" @click.stop="omitEntry = entry">Omit</RowAction>
+                                </div>
                             </td>
                         </tr>
                         <tr v-if="expanded === entry.id" class="border-b bg-gray-50/60">

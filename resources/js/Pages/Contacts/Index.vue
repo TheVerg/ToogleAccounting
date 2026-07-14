@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import TabBar from '@/Components/TabBar.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
@@ -136,9 +137,11 @@ const submitImport = () => {
                         <td class="px-4 py-2.5">
                             <span :class="c.is_active ? 'text-green-700' : 'text-gray-400'">{{ c.is_active ? 'Active' : 'Inactive' }}</span>
                         </td>
-                        <td class="px-4 py-2.5 text-right">
-                            <button v-if="can('contacts.manage')" class="text-sm text-brand-600 hover:underline" @click="openEdit(c)">Edit</button>
-                            <button v-if="can('contacts.manage')" class="ml-3 text-sm text-red-600 hover:underline" @click="destroy(c)">Delete</button>
+                        <td class="px-4 py-2.5">
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <RowAction v-if="can('contacts.manage')" variant="primary" @click="openEdit(c)">Edit</RowAction>
+                                <RowAction v-if="can('contacts.manage')" variant="danger" @click="destroy(c)">Delete</RowAction>
+                            </div>
                         </td>
                     </tr>
                     <tr v-if="!filteredContacts.length">

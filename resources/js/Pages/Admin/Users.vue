@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
@@ -8,6 +9,9 @@ const props = defineProps({ users: Array, roles: Array, companies: Array, employ
 
 const showModal = ref(false);
 const editing = ref(null);
+// Above this many role chips, the row collapses to an eye + count button.
+const CHIP_LIMIT = 5;
+const viewingAccess = ref(null);
 
 const page = usePage();
 const form = useForm({ name: '', email: '', employee_id: '', assignments: [] });
@@ -110,19 +114,35 @@ const copyTemporaryPassword = () => navigator.clipboard.writeText(temporaryPassw
                         </td>
                         <td class="px-4 py-2.5 text-gray-500">{{ linkedEmployeeName(u) }}</td>
                         <td class="px-4 py-2.5">
-                            <span
-                                v-for="a in u.assignments"
-                                :key="a.company_id"
-                                class="mr-1 inline-block rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800"
+                            <template v-if="u.assignments.length <= CHIP_LIMIT">
+                                <span
+                                    v-for="a in u.assignments"
+                                    :key="a.company_id"
+                                    class="mr-1 inline-block rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800"
+                                >
+                                    {{ companyName(a.company_id) }} · {{ a.role }}
+                                </span>
+                            </template>
+                            <button
+                                v-else
+                                type="button"
+                                class="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-800 hover:bg-purple-200"
+                                @click="viewingAccess = u"
                             >
-                                {{ companyName(a.company_id) }} · {{ a.role }}
-                            </span>
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+                                    <path d="M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
+                                    <path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 0 1 0-1.186A10.004 10.004 0 0 1 10 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0 1 10 17c-4.257 0-7.893-2.66-9.336-6.41ZM14 10a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" clip-rule="evenodd" />
+                                </svg>
+                                {{ u.assignments.length }} companies
+                            </button>
                             <span v-if="!u.assignments.length" class="text-xs text-gray-400">No access</span>
                         </td>
-                        <td class="px-4 py-2.5 text-right">
-                            <button class="text-sm text-brand-600 hover:underline" @click="openEdit(u)">Edit</button>
-                            <button class="ml-3 text-sm text-amber-700 hover:underline" @click="resetPassword(u)">Reset password</button>
-                            <button class="ml-3 text-sm text-red-600 hover:underline" @click="destroy(u)">Delete</button>
+                        <td class="px-4 py-2.5">
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <RowAction variant="primary" @click="openEdit(u)">Edit</RowAction>
+                                <RowAction variant="warning" @click="resetPassword(u)">Reset password</RowAction>
+                                <RowAction variant="danger" @click="destroy(u)">Delete</RowAction>
+                            </div>
                         </td>
                     </tr>
                 </tbody>
@@ -190,6 +210,23 @@ const copyTemporaryPassword = () => navigator.clipboard.writeText(temporaryPassw
                     <button type="submit" :disabled="form.processing" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">Save</button>
                 </div>
             </form>
+        </Modal>
+
+        <!-- Full company access list for users with many assignments -->
+        <Modal :show="!!viewingAccess" max-width="lg" @close="viewingAccess = null">
+            <div v-if="viewingAccess" class="p-6">
+                <h2 class="text-lg font-semibold text-gray-800">Company access — {{ viewingAccess.name }}</h2>
+                <p class="mt-1 text-sm text-gray-500">{{ viewingAccess.assignments.length }} companies</p>
+                <ul class="mt-4 max-h-96 divide-y divide-slate-100 overflow-y-auto">
+                    <li v-for="a in viewingAccess.assignments" :key="a.company_id" class="flex items-center justify-between gap-3 py-2.5">
+                        <span class="text-sm text-slate-700">{{ companyName(a.company_id) }}</span>
+                        <span class="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">{{ a.role }}</span>
+                    </li>
+                </ul>
+                <div class="mt-5 flex justify-end">
+                    <button type="button" class="rounded-md border border-gray-300 px-4 py-2 text-sm" @click="viewingAccess = null">Close</button>
+                </div>
+            </div>
         </Modal>
     </AppLayout>
 </template>

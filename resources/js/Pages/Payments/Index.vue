@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import OmitTransactionModal from '@/Components/OmitTransactionModal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
@@ -157,7 +158,7 @@ const closeExport = () => {
                         <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="p.attachments?.[0]" /></td>
                         <td class="px-4 py-2.5 text-right font-medium">{{ money(p.amount) }}</td>
                         <td v-if="isSystemAdmin" class="px-4 py-2.5 text-right">
-                            <button class="text-xs font-medium text-red-700 hover:underline" @click="omitTarget = p">Omit</button>
+                            <RowAction variant="danger" @click="omitTarget = p">Omit</RowAction>
                         </td>
                     </tr>
                     <tr v-if="!payments.data.length">

@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { can, money, fmtDate } from '@/lib/helpers';
@@ -323,9 +324,9 @@ const calcLabel = (c) => (c.calc_type === 'fixed' ? money(c.amount) : `${c.amoun
                                 <div class="text-slate-800">{{ fmtDate(assignment.start_date) }} - {{ fmtDate(assignment.end_date) }}</div>
                             </div>
                         </div>
-                        <div v-if="can('payroll.manage')" class="mt-3 flex justify-end gap-3 border-t border-slate-200 pt-3">
-                            <button class="text-xs font-medium text-brand-600 hover:underline" @click="openAssignment(assignment)">Edit</button>
-                            <button v-if="assignments.length > 1" class="text-xs font-medium text-red-600 hover:underline" @click="removeAssignment(assignment)">Remove</button>
+                        <div v-if="can('payroll.manage')" class="mt-3 flex justify-end gap-2 border-t border-slate-200 pt-3">
+                            <RowAction variant="primary" @click="openAssignment(assignment)">Edit</RowAction>
+                            <RowAction v-if="assignments.length > 1" variant="danger" @click="removeAssignment(assignment)">Remove</RowAction>
                         </div>
                     </div>
                 </div>
@@ -356,7 +357,7 @@ const calcLabel = (c) => (c.calc_type === 'fixed' ? money(c.amount) : `${c.amoun
                                 </td>
                                 <td class="py-2 text-right tabular-nums text-slate-700">{{ calcLabel(c) }}</td>
                                 <td class="py-2 pl-3 text-right">
-                                    <button v-if="can('payroll.manage')" class="text-xs text-red-600 hover:underline" @click="removeComponent(c)">Remove</button>
+                                    <RowAction v-if="can('payroll.manage')" variant="danger" @click="removeComponent(c)">Remove</RowAction>
                                 </td>
                             </tr>
                         </tbody>
@@ -374,7 +375,7 @@ const calcLabel = (c) => (c.calc_type === 'fixed' ? money(c.amount) : `${c.amoun
                                 </td>
                                 <td class="py-2 text-right tabular-nums text-slate-700">{{ calcLabel(c) }}</td>
                                 <td class="py-2 pl-3 text-right">
-                                    <button v-if="can('payroll.manage')" class="text-xs text-red-600 hover:underline" @click="removeComponent(c)">Remove</button>
+                                    <RowAction v-if="can('payroll.manage')" variant="danger" @click="removeComponent(c)">Remove</RowAction>
                                 </td>
                             </tr>
                         </tbody>

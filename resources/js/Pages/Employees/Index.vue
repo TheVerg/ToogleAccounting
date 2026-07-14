@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { can, money } from '@/lib/helpers';
@@ -136,13 +137,11 @@ const destroy = (e) => {
                                 {{ e.is_active ? 'Active' : 'Inactive' }}
                             </span>
                         </td>
-                        <td class="px-5 py-3 text-right whitespace-nowrap">
-                            <Link :href="`/employees/${e.id}`" class="text-sm font-medium text-brand-600 hover:underline">View</Link>
-                            <button
-                                v-if="can('payroll.manage')"
-                                class="ml-3 text-sm text-red-600 hover:underline"
-                                @click="destroy(e)"
-                            >Delete</button>
+                        <td class="px-5 py-3 whitespace-nowrap">
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <RowAction variant="primary" :to="`/employees/${e.id}`">View</RowAction>
+                                <RowAction v-if="can('payroll.manage')" variant="danger" @click="destroy(e)">Delete</RowAction>
+                            </div>
                         </td>
                     </tr>
                     <tr v-if="!employees.length">

@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import ExpenseTabs from '@/Components/ExpenseTabs.vue';
+import RowAction from '@/Components/RowAction.vue';
 import Modal from '@/Components/Modal.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
@@ -167,7 +168,7 @@ const closeExport = () => {
                         </td>
                         <td class="px-4 py-2.5 text-right font-medium">{{ money(r.amount) }}</td>
                         <td class="px-4 py-2.5 text-right">
-                            <button v-if="can('expenses.manage')" class="text-sm text-brand-600 hover:underline" @click="openEdit(r)">Edit</button>
+                            <RowAction v-if="can('expenses.manage')" variant="primary" @click="openEdit(r)">Edit</RowAction>
                         </td>
                     </tr>
                     <tr v-if="!recurring.length">

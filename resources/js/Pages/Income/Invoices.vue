@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import OmitTransactionModal from '@/Components/OmitTransactionModal.vue';
+import RowAction from '@/Components/RowAction.vue';
 import SupportingDocumentLink from '@/Components/SupportingDocumentLink.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
@@ -224,25 +225,17 @@ const statusBadge = {
                         <td class="px-4 py-2.5 text-right" :class="Number(inv.total) - Number(inv.amount_paid) > 0 ? 'text-amber-700' : 'text-green-700'">
                             {{ money(Number(inv.total) - Number(inv.amount_paid)) }}
                         </td>
-                        <td class="px-4 py-2.5 text-right">
-                            <button v-if="can('invoices.manage') && belongsToSelectedCompany(inv) && inv.status === 'draft'" class="text-xs text-blue-600 hover:underline" @click="issueDraft(inv)">Issue</button>
-                            <a
-                                v-if="can('invoices.view')"
-                                :href="`/income/invoices/${inv.id}/pdf`"
-                                class="ml-2 text-xs text-brand-600 hover:underline"
-                            >
-                                Invoice PDF
-                            </a>
-                            <button
-                                v-if="can('invoices.manage') && belongsToSelectedCompany(inv) && ['sent', 'partially_paid'].includes(inv.status)"
-                                class="ml-2 rounded-md bg-green-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-800"
-                                @click="openPay(inv)"
-                            >Record payment</button>
-                            <button
-                                v-if="isSystemAdmin && belongsToSelectedCompany(inv)"
-                                class="ml-2 text-xs font-medium text-red-700 hover:underline"
-                                @click="omitTarget = inv"
-                            >Omit</button>
+                        <td class="px-4 py-2.5">
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <RowAction v-if="can('invoices.manage') && belongsToSelectedCompany(inv) && inv.status === 'draft'" variant="info" @click="issueDraft(inv)">Issue</RowAction>
+                                <RowAction v-if="can('invoices.view')" variant="primary" :href="`/income/invoices/${inv.id}/pdf`">Invoice PDF</RowAction>
+                                <RowAction
+                                    v-if="can('invoices.manage') && belongsToSelectedCompany(inv) && ['sent', 'partially_paid'].includes(inv.status)"
+                                    variant="success"
+                                    @click="openPay(inv)"
+                                >Record payment</RowAction>
+                                <RowAction v-if="isSystemAdmin && belongsToSelectedCompany(inv)" variant="danger" @click="omitTarget = inv">Omit</RowAction>
+                            </div>
                         </td>
                     </tr>
                     <tr v-if="!invoices.data.length">
