@@ -291,7 +291,7 @@ const calcLabel = (c) => (c.calc_type === 'fixed' ? money(c.amount) : `${c.amoun
                     <button v-if="can('payroll.manage')" class="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white" @click="openAssignment()">+ Assign company</button>
                 </div>
 
-                <div v-if="assignments.length" class="space-y-3">
+                <div v-if="assignments.length" class="max-h-[34rem] space-y-3 overflow-y-auto pr-1">
                     <div
                         v-for="assignment in assignments"
                         :key="assignment.id"
