@@ -5,7 +5,12 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { can, money } from '@/lib/helpers';
 
-defineProps({ employees: Array, linkableUsers: Array });
+const props = defineProps({
+    employees: Array,
+    linkableUsers: Array,
+    companies: Array,
+    currentCompanyId: Number,
+});
 
 const showModal = ref(false);
 
@@ -24,16 +29,37 @@ const form = useForm({
     start_date: '',
     end_date: '',
     base_salary: '',
+    company_id: props.currentCompanyId,
 });
 
 const openCreate = () => {
     form.reset();
+    form.company_id = props.currentCompanyId;
     form.clearErrors();
     showModal.value = true;
 };
 
 const submit = () => {
-    form.post('/employees', {
+    form.transform((data) => ({
+        first_name: data.first_name,
+        last_name: data.last_name,
+        user_id: data.user_id || null,
+        email: data.email.trim() || null,
+        phone: data.phone || null,
+        national_id: data.national_id || null,
+        address: data.address || null,
+        contract_type: data.contract_type,
+        assignments: [{
+            company_id: data.company_id,
+            job_title: data.job_title || null,
+            department: data.department || null,
+            pay_frequency: data.pay_frequency,
+            start_date: data.start_date || null,
+            end_date: data.end_date || null,
+            base_salary: data.base_salary,
+            is_active: true,
+        }],
+    })).post('/employees', {
         preserveScroll: true,
         onSuccess: () => {
             showModal.value = false;
@@ -41,6 +67,8 @@ const submit = () => {
         },
     });
 };
+
+const errorFor = (field) => form.errors[field] ?? form.errors[`assignments.0.${field}`];
 
 const destroy = (e) => {
     if (confirm(`Delete employee ${e.full_name}?`)) {
@@ -128,7 +156,22 @@ const destroy = (e) => {
         <Modal :show="showModal" max-width="2xl" @close="showModal = false">
             <form class="p-6" @submit.prevent="submit">
                 <h2 class="mb-4 text-lg font-semibold text-gray-800">New employee</h2>
+                <div
+                    v-if="form.hasErrors"
+                    class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                    role="alert"
+                >
+                    Please correct the highlighted fields and try again.
+                    <p v-if="form.errors.assignments" class="mt-1">{{ form.errors.assignments }}</p>
+                </div>
                 <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="sm:col-span-2">
+                        <label class="mb-1 block text-sm text-gray-600">Employing company</label>
+                        <select v-model="form.company_id" class="w-full rounded-md border-gray-300 text-sm" required>
+                            <option v-for="company in companies" :key="company.id" :value="company.id">{{ company.name }}</option>
+                        </select>
+                        <p v-if="form.errors['assignments.0.company_id']" class="mt-1 text-xs text-red-600">{{ form.errors['assignments.0.company_id'] }}</p>
+                    </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">First name</label>
                         <input v-model="form.first_name" class="w-full rounded-md border-gray-300 text-sm" required />
@@ -141,7 +184,7 @@ const destroy = (e) => {
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Email</label>
-                        <input v-model="form.email" type="email" class="w-full rounded-md border-gray-300 text-sm" />
+                        <input v-model.trim="form.email" type="email" inputmode="email" autocomplete="email" class="w-full rounded-md border-gray-300 text-sm" />
                         <p v-if="form.errors.email" class="mt-1 text-xs text-red-600">{{ form.errors.email }}</p>
                     </div>
                     <div>
@@ -170,12 +213,12 @@ const destroy = (e) => {
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Job title</label>
                         <input v-model="form.job_title" class="w-full rounded-md border-gray-300 text-sm" />
-                        <p v-if="form.errors.job_title" class="mt-1 text-xs text-red-600">{{ form.errors.job_title }}</p>
+                        <p v-if="errorFor('job_title')" class="mt-1 text-xs text-red-600">{{ errorFor('job_title') }}</p>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Department</label>
                         <input v-model="form.department" class="w-full rounded-md border-gray-300 text-sm" />
-                        <p v-if="form.errors.department" class="mt-1 text-xs text-red-600">{{ form.errors.department }}</p>
+                        <p v-if="errorFor('department')" class="mt-1 text-xs text-red-600">{{ errorFor('department') }}</p>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Contract type</label>
@@ -193,22 +236,22 @@ const destroy = (e) => {
                             <option value="weekly">Weekly</option>
                             <option value="biweekly">Biweekly</option>
                         </select>
-                        <p v-if="form.errors.pay_frequency" class="mt-1 text-xs text-red-600">{{ form.errors.pay_frequency }}</p>
+                        <p v-if="errorFor('pay_frequency')" class="mt-1 text-xs text-red-600">{{ errorFor('pay_frequency') }}</p>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Base salary</label>
                         <input v-model="form.base_salary" type="number" step="0.01" min="0" class="w-full rounded-md border-gray-300 text-sm" required />
-                        <p v-if="form.errors.base_salary" class="mt-1 text-xs text-red-600">{{ form.errors.base_salary }}</p>
+                        <p v-if="errorFor('base_salary')" class="mt-1 text-xs text-red-600">{{ errorFor('base_salary') }}</p>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Start date</label>
                         <input v-model="form.start_date" type="date" class="w-full rounded-md border-gray-300 text-sm" />
-                        <p v-if="form.errors.start_date" class="mt-1 text-xs text-red-600">{{ form.errors.start_date }}</p>
+                        <p v-if="errorFor('start_date')" class="mt-1 text-xs text-red-600">{{ errorFor('start_date') }}</p>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">End date</label>
                         <input v-model="form.end_date" type="date" class="w-full rounded-md border-gray-300 text-sm" />
-                        <p v-if="form.errors.end_date" class="mt-1 text-xs text-red-600">{{ form.errors.end_date }}</p>
+                        <p v-if="errorFor('end_date')" class="mt-1 text-xs text-red-600">{{ errorFor('end_date') }}</p>
                     </div>
                 </div>
                 <div class="mt-6 flex justify-end gap-3">

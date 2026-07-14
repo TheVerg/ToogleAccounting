@@ -54,6 +54,7 @@ class EmployeeController extends Controller
                 ->whereIn('subtype', Account::MONEY_SUBTYPES)->where('is_active', true)
                 ->orderBy('code')->get(['id', 'code', 'name']),
             'linkableUsers' => $this->linkableUsers($employee->user_id),
+            'companies' => $request->user()->accessibleCompanies()->values(),
         ]);
     }
 
@@ -108,6 +109,38 @@ class EmployeeController extends Controller
         Attachment::storeFor($employee, $request->file('contract'), $employee->company_id, $request->user()->id);
 
         return back()->with('success', 'Employment contract attached.');
+    }
+
+    public function storeAssignment(Request $request, Employee $employee): RedirectResponse
+    {
+        abort_unless($request->user()->accessibleCompanies()->contains('id', $employee->company_id), 403);
+        $data = $this->validateAssignment($request, $employee);
+        $employee->assignments()->create($data);
+
+        return back()->with('success', 'Company assignment added.');
+    }
+
+    public function updateAssignment(Request $request, Employee $employee, EmployeeAssignment $assignment): RedirectResponse
+    {
+        abort_unless($assignment->employee_id === $employee->id, 404);
+        abort_unless($request->user()->accessibleCompanies()->contains('id', $assignment->company_id), 403);
+        $assignment->update($this->validateAssignment($request, $employee, $assignment));
+
+        return back()->with('success', 'Company assignment updated.');
+    }
+
+    public function destroyAssignment(Request $request, Employee $employee, EmployeeAssignment $assignment): RedirectResponse
+    {
+        abort_unless($assignment->employee_id === $employee->id, 404);
+        abort_unless($request->user()->accessibleCompanies()->contains('id', $assignment->company_id), 403);
+
+        if ($employee->assignments()->count() <= 1) {
+            return back()->with('error', 'An employee must retain at least one company assignment.');
+        }
+
+        $assignment->delete();
+
+        return back()->with('success', 'Company assignment removed.');
     }
 
     public function destroy(Request $request, Employee $employee): RedirectResponse
@@ -167,7 +200,7 @@ class EmployeeController extends Controller
                 Rule::exists('users', 'id'),
                 Rule::unique('employees', 'user_id')->ignore($request->route('employee')),
             ],
-            'email' => ['nullable', 'email', 'max:255'],
+            'email' => ['nullable', 'email:rfc', 'max:255'],
             'phone' => ['nullable', 'string', 'max:40'],
             'national_id' => ['nullable', 'string', 'max:60'],
             'address' => ['nullable', 'string', 'max:255'],
@@ -183,7 +216,7 @@ class EmployeeController extends Controller
                 'assignments.*.department' => ['nullable', 'string', 'max:120'],
                 'assignments.*.pay_frequency' => ['required', Rule::in(Employee::PAY_FREQUENCIES)],
                 'assignments.*.start_date' => ['nullable', 'date'],
-                'assignments.*.end_date' => ['nullable', 'date'],
+                'assignments.*.end_date' => ['nullable', 'date', 'after_or_equal:assignments.*.start_date'],
                 'assignments.*.base_salary' => ['required', 'numeric', 'min:0'],
                 'assignments.*.is_active' => ['boolean'],
             ];
@@ -219,6 +252,26 @@ class EmployeeController extends Controller
         $seq = Employee::withTrashed()->where('company_id', $companyId)->lockForUpdate()->count() + 1;
 
         return 'EMP-'.str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+    }
+
+    protected function validateAssignment(Request $request, Employee $employee, ?EmployeeAssignment $assignment = null): array
+    {
+        $accessibleIds = $request->user()->accessibleCompanies()->pluck('id')->all();
+
+        return $request->validate([
+            'company_id' => [
+                'required', 'integer', Rule::in($accessibleIds),
+                Rule::unique('employee_assignments', 'company_id')
+                    ->where('employee_id', $employee->id)->ignore($assignment),
+            ],
+            'job_title' => ['nullable', 'string', 'max:120'],
+            'department' => ['nullable', 'string', 'max:120'],
+            'pay_frequency' => ['required', Rule::in(Employee::PAY_FREQUENCIES)],
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'base_salary' => ['required', 'numeric', 'min:0'],
+            'is_active' => ['required', 'boolean'],
+        ]);
     }
 
     protected function linkableUsers(?int $currentUserId = null)

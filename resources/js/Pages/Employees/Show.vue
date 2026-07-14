@@ -9,10 +9,47 @@ const props = defineProps({
     employee: Object,
     moneyAccounts: Array,
     linkableUsers: Array,
+    companies: Array,
 });
 
 const showEdit = ref(false);
 const showAdd = ref(false);
+const showAssignment = ref(false);
+const editingAssignment = ref(null);
+
+const assignmentForm = useForm({
+    company_id: '', job_title: '', department: '', pay_frequency: 'monthly',
+    start_date: '', end_date: '', base_salary: '', is_active: true,
+});
+
+const openAssignment = (assignment = null) => {
+    editingAssignment.value = assignment;
+    assignmentForm.clearErrors();
+    assignmentForm.defaults({
+        company_id: assignment?.company_id ?? '',
+        job_title: assignment?.job_title ?? '',
+        department: assignment?.department ?? '',
+        pay_frequency: assignment?.pay_frequency ?? 'monthly',
+        start_date: assignment?.start_date ?? '',
+        end_date: assignment?.end_date ?? '',
+        base_salary: assignment?.base_salary ?? '',
+        is_active: assignment?.is_active ?? true,
+    });
+    assignmentForm.reset();
+    showAssignment.value = true;
+};
+
+const submitAssignment = () => {
+    const options = { preserveScroll: true, onSuccess: () => (showAssignment.value = false) };
+    if (editingAssignment.value) assignmentForm.put(`/employees/${props.employee.id}/assignments/${editingAssignment.value.id}`, options);
+    else assignmentForm.post(`/employees/${props.employee.id}/assignments`, options);
+};
+
+const removeAssignment = (assignment) => {
+    if (confirm(`Remove this employee from ${assignment.company?.name}?`)) {
+        router.delete(`/employees/${props.employee.id}/assignments/${assignment.id}`, { preserveScroll: true });
+    }
+};
 
 const latestContract = computed(() =>
     [...(props.employee.attachments ?? [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0] ?? null,
@@ -246,9 +283,12 @@ const calcLabel = (c) => (c.calc_type === 'fixed' ? money(c.amount) : `${c.amoun
 
             <!-- Company assignments -->
             <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div class="mb-4">
-                    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Company assignments</h3>
-                    <p class="mt-1 text-xs text-slate-400">Company-specific roles, salary, pay frequency and active status.</p>
+                <div class="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Company assignments</h3>
+                        <p class="mt-1 text-xs text-slate-400">Company-specific roles, salary, pay frequency and active status.</p>
+                    </div>
+                    <button v-if="can('payroll.manage')" class="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white" @click="openAssignment()">+ Assign company</button>
                 </div>
 
                 <div v-if="assignments.length" class="space-y-3">
@@ -282,6 +322,10 @@ const calcLabel = (c) => (c.calc_type === 'fixed' ? money(c.amount) : `${c.amoun
                                 <div class="text-xs uppercase tracking-wide text-slate-400">Period</div>
                                 <div class="text-slate-800">{{ fmtDate(assignment.start_date) }} - {{ fmtDate(assignment.end_date) }}</div>
                             </div>
+                        </div>
+                        <div v-if="can('payroll.manage')" class="mt-3 flex justify-end gap-3 border-t border-slate-200 pt-3">
+                            <button class="text-xs font-medium text-brand-600 hover:underline" @click="openAssignment(assignment)">Edit</button>
+                            <button v-if="assignments.length > 1" class="text-xs font-medium text-red-600 hover:underline" @click="removeAssignment(assignment)">Remove</button>
                         </div>
                     </div>
                 </div>
@@ -348,6 +392,31 @@ const calcLabel = (c) => (c.calc_type === 'fixed' ? money(c.amount) : `${c.amoun
                 </div>
             </div>
         </div>
+
+        <!-- Edit employee modal -->
+        <Modal :show="showAssignment" max-width="2xl" @close="showAssignment = false">
+            <form class="p-6" @submit.prevent="submitAssignment">
+                <h2 class="mb-4 text-lg font-semibold text-gray-800">{{ editingAssignment ? 'Edit company assignment' : 'Assign employee to company' }}</h2>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="sm:col-span-2">
+                        <label class="mb-1 block text-sm text-gray-600">Company</label>
+                        <select v-model="assignmentForm.company_id" :disabled="!!editingAssignment" class="w-full rounded-md border-gray-300 text-sm" required>
+                            <option value="" disabled>Select company</option>
+                            <option v-for="company in companies" :key="company.id" :value="company.id">{{ company.name }}</option>
+                        </select>
+                        <p v-if="assignmentForm.errors.company_id" class="mt-1 text-xs text-red-600">{{ assignmentForm.errors.company_id }}</p>
+                    </div>
+                    <div><label class="mb-1 block text-sm text-gray-600">Job title</label><input v-model="assignmentForm.job_title" class="w-full rounded-md border-gray-300 text-sm" /></div>
+                    <div><label class="mb-1 block text-sm text-gray-600">Department</label><input v-model="assignmentForm.department" class="w-full rounded-md border-gray-300 text-sm" /></div>
+                    <div><label class="mb-1 block text-sm text-gray-600">Pay frequency</label><select v-model="assignmentForm.pay_frequency" class="w-full rounded-md border-gray-300 text-sm" required><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option></select></div>
+                    <div><label class="mb-1 block text-sm text-gray-600">Base salary</label><input v-model="assignmentForm.base_salary" type="number" min="0" step="0.01" class="w-full rounded-md border-gray-300 text-sm" required /><p v-if="assignmentForm.errors.base_salary" class="mt-1 text-xs text-red-600">{{ assignmentForm.errors.base_salary }}</p></div>
+                    <div><label class="mb-1 block text-sm text-gray-600">Start date</label><input v-model="assignmentForm.start_date" type="date" class="w-full rounded-md border-gray-300 text-sm" /></div>
+                    <div><label class="mb-1 block text-sm text-gray-600">End date</label><input v-model="assignmentForm.end_date" type="date" class="w-full rounded-md border-gray-300 text-sm" /><p v-if="assignmentForm.errors.end_date" class="mt-1 text-xs text-red-600">{{ assignmentForm.errors.end_date }}</p></div>
+                    <label class="flex items-center gap-2 text-sm text-gray-600"><input v-model="assignmentForm.is_active" type="checkbox" class="rounded border-gray-300 text-brand-600" /> Active in this company</label>
+                </div>
+                <div class="mt-6 flex justify-end gap-3"><button type="button" class="rounded-md border px-4 py-2 text-sm" @click="showAssignment = false">Cancel</button><button type="submit" :disabled="assignmentForm.processing" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Save assignment</button></div>
+            </form>
+        </Modal>
 
         <!-- Edit employee modal -->
         <Modal :show="showEdit" max-width="2xl" @close="showEdit = false">

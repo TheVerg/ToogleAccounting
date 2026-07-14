@@ -118,6 +118,9 @@ Route::middleware(['auth', 'company'])->group(function () {
     Route::middleware('permission:payroll.manage')->group(function () {
         Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
         Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');
+        Route::post('/employees/{employee}/assignments', [EmployeeController::class, 'storeAssignment'])->name('employees.assignments.store');
+        Route::put('/employees/{employee}/assignments/{assignment}', [EmployeeController::class, 'updateAssignment'])->name('employees.assignments.update');
+        Route::delete('/employees/{employee}/assignments/{assignment}', [EmployeeController::class, 'destroyAssignment'])->name('employees.assignments.destroy');
         Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
         Route::post('/employees/{employee}/contract', [EmployeeController::class, 'storeContract'])->name('employees.contract.store');
         Route::post('/employees/{employee}/components', [EmployeeController::class, 'storeComponent'])->name('employees.components.store');
