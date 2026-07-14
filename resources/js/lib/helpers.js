@@ -1,8 +1,15 @@
 import { usePage } from '@inertiajs/vue3';
 
 export function can(permission) {
-    const permissions = usePage().props.auth.user?.permissions ?? [];
-    return permissions.includes(permission);
+    const user = usePage().props.auth.user;
+
+    // Mirrors the backend's Gate::before: system admins can do everything
+    // in every company, regardless of per-company role assignments.
+    if (user?.is_system_admin === true) {
+        return true;
+    }
+
+    return (user?.permissions ?? []).includes(permission);
 }
 
 export function money(value, currency) {
