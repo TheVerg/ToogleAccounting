@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import RowAction from '@/Components/RowAction.vue';
 import { Head, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { money, fmtDate } from '@/lib/helpers';
@@ -19,6 +20,9 @@ const go = (accountId) => router.get('/statements/cash-book', {
 }, { preserveState: true });
 
 const apply = () => go(props.filters.account);
+
+const exportUrl = (format) =>
+    `/statements/general-ledger/export?account=${props.filters.account}&from=${props.filters.from}&to=${props.filters.to}&format=${format}`;
 </script>
 
 <template>
@@ -47,7 +51,11 @@ const apply = () => go(props.filters.account);
                     <input v-model="to" type="date" class="rounded-md border-gray-300 py-1.5 text-sm" />
                 </div>
                 <button class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="apply">Apply</button>
-                <span class="self-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">{{ scopeLabel }}</span>
+                <div class="flex items-center gap-2 self-center">
+                    <RowAction v-if="report" :href="exportUrl('excel')" title="Download this cash book as CSV">Export Excel</RowAction>
+                    <RowAction v-if="report" :href="exportUrl('pdf')" title="Download this cash book as PDF">Export PDF</RowAction>
+                    <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">{{ scopeLabel }}</span>
+                </div>
             </div>
         </div>
 

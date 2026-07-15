@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import RowAction from '@/Components/RowAction.vue';
 import TabBar from '@/Components/TabBar.vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
@@ -42,6 +43,9 @@ const rangeLocked = computed(() => props.lockedBefore && props.filters.to < prop
 const openMonths = computed(() => props.months.filter((m) => !m.closed));
 const closedMonths = computed(() => props.months.filter((m) => m.closed));
 
+const exportUrl = (format) =>
+    `/statements/general-ledger/export?account=${props.filters.account}&from=${props.filters.from}&to=${props.filters.to}&format=${format}`;
+
 const closeForm = useForm({ through_month: '' });
 const reopenForm = useForm({ from_month: '' });
 
@@ -80,7 +84,11 @@ const submitReopen = () => reopenForm.post('/statements/general-ledger/reopen', 
                     <input v-model="to" type="date" class="rounded-md border-gray-300 py-1.5 text-sm" />
                 </div>
                 <button class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="apply">Apply</button>
-                <span class="ml-auto self-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">{{ scopeLabel }}</span>
+                <div class="ml-auto flex items-center gap-2 self-center">
+                    <RowAction v-if="report" :href="exportUrl('excel')" title="Download this ledger as CSV">Export Excel</RowAction>
+                    <RowAction v-if="report" :href="exportUrl('pdf')" title="Download this ledger as PDF">Export PDF</RowAction>
+                    <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">{{ scopeLabel }}</span>
+                </div>
             </div>
 
             <p v-if="rangeLocked" class="mb-4 flex items-center gap-2 rounded-md border border-gray-300 bg-gray-100 px-4 py-3 text-sm text-gray-600">
@@ -239,9 +247,7 @@ const submitReopen = () => reopenForm.post('/statements/general-ledger/reopen', 
                                 </span>
                             </td>
                             <td class="px-4 py-2.5 text-right">
-                                <button type="button" class="text-sm font-medium text-brand-700 hover:underline" @click="viewMonth(m)">
-                                    Open ledger
-                                </button>
+                                <RowAction variant="primary" @click="viewMonth(m)">Open ledger</RowAction>
                             </td>
                         </tr>
                         <tr v-if="!months.length">

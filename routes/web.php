@@ -19,6 +19,7 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\InvoiceExportController;
 use App\Http\Controllers\InvoicePdfController;
 use App\Http\Controllers\JournalEntryController;
+use App\Http\Controllers\LedgerExportController;
 use App\Http\Controllers\OpeningBalanceController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PeriodLockController;
@@ -254,6 +255,7 @@ Route::middleware(['auth', 'company'])->group(function () {
         Route::get('/budget-vs-actual', [ReportController::class, 'budgetVsActual'])->name('reports.budget-vs-actual');
         // Live ledger views (not registered snapshots).
         Route::get('/general-ledger', [ReportController::class, 'generalLedger'])->name('reports.general-ledger');
+        Route::get('/general-ledger/export', LedgerExportController::class)->name('reports.general-ledger.export');
         Route::get('/cash-book', [ReportController::class, 'cashBook'])->name('reports.cash-book');
         // Month-end close / reopen (system admin only, enforced in controller).
         Route::post('/general-ledger/close', [PeriodLockController::class, 'close'])->name('periods.close');
