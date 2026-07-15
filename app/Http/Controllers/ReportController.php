@@ -164,6 +164,8 @@ class ReportController extends Controller
                 : null,
             'filters' => ['account' => $account?->id, 'from' => $from, 'to' => $to],
             'scopeLabel' => $company->name,
+            'months' => $this->reports->ledgerMonths($company),
+            'lockedBefore' => $company->locked_before?->toDateString(),
         ]);
     }
 

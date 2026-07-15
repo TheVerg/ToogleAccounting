@@ -533,6 +533,44 @@ class ReportService
         ];
     }
 
+    /**
+     * The ledger grouped per calendar month: entry count, total movement,
+     * and whether the month is closed (locked) — newest first. The ledger
+     * itself is never reset; a "closed" month is simply one the company's
+     * period lock no longer allows posting into.
+     */
+    public function ledgerMonths(Company $company): array
+    {
+        $entries = DB::table('journal_entries as je')
+            ->join('journal_lines as jl', 'jl.journal_entry_id', '=', 'je.id')
+            ->where('je.company_id', $company->id)
+            ->whereIn('je.status', ['posted', 'reversed'])
+            ->groupBy('je.id', 'je.date')
+            ->select('je.id', 'je.date', DB::raw('SUM(jl.debit) as debit'))
+            ->get();
+
+        return $entries
+            ->groupBy(fn ($e) => substr((string) $e->date, 0, 7))
+            ->map(function ($group, $month) use ($company) {
+                $start = Carbon::parse($month.'-01');
+                $end = $start->copy()->endOfMonth();
+
+                return [
+                    'month' => $month,
+                    'label' => $start->format('F Y'),
+                    'from' => $start->toDateString(),
+                    'to' => $end->toDateString(),
+                    'entries' => $group->count(),
+                    'movement' => round((float) $group->sum('debit'), 2),
+                    'closed' => $company->locked_before !== null
+                        && $end->lt($company->locked_before),
+                ];
+            })
+            ->sortKeysDesc()
+            ->values()
+            ->all();
+    }
+
     /** Current balance of every money (cash/bank/petty cash) account. */
     public function moneyBalances(array $companyIds): Collection
     {

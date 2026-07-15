@@ -21,6 +21,7 @@ use App\Http\Controllers\InvoicePdfController;
 use App\Http\Controllers\JournalEntryController;
 use App\Http\Controllers\OpeningBalanceController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PeriodLockController;
 use App\Http\Controllers\PaymentExportController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PayrollPayslipController;
@@ -254,6 +255,9 @@ Route::middleware(['auth', 'company'])->group(function () {
         // Live ledger views (not registered snapshots).
         Route::get('/general-ledger', [ReportController::class, 'generalLedger'])->name('reports.general-ledger');
         Route::get('/cash-book', [ReportController::class, 'cashBook'])->name('reports.cash-book');
+        // Month-end close / reopen (system admin only, enforced in controller).
+        Route::post('/general-ledger/close', [PeriodLockController::class, 'close'])->name('periods.close');
+        Route::post('/general-ledger/reopen', [PeriodLockController::class, 'reopen'])->name('periods.reopen');
         // Statement type pages: period-based views of registered snapshots.
         Route::get('/{type}', [ReportController::class, 'view'])
             ->whereIn('type', ['trial-balance', 'profit-loss', 'balance-sheet', 'cash-flow', 'tax-summary', 'ratios'])
