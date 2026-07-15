@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Account;
 use App\Models\FinancialStatement;
 use App\Services\ReportService;
 use App\Services\AnalysisService;
@@ -63,6 +64,8 @@ class ReportController extends Controller
                 ['name' => 'Profit & Loss', 'description' => 'Income and expenses grouped per the chart of accounts, with drill-down.', 'href' => '/statements/profit-loss'],
                 ['name' => 'Balance Sheet', 'description' => 'Assets, liabilities and equity as at a date, with drill-down.', 'href' => '/statements/balance-sheet'],
                 ['name' => 'Cash Flow', 'description' => 'Direct-method cash movements: operating, investing, financing.', 'href' => '/statements/cash-flow'],
+                ['name' => 'General Ledger', 'description' => 'Account-by-account listing of every posting with a running balance (live).', 'href' => '/statements/general-ledger'],
+                ['name' => 'Cash Book', 'description' => 'Receipts and payments through each cash and bank account, with running balance (live).', 'href' => '/statements/cash-book'],
                 ['name' => 'Budget vs Actual', 'description' => 'Fiscal-year budget compared with posted actuals (live analysis).', 'href' => '/statements/budget-vs-actual'],
                 ['name' => 'Tax Summary', 'description' => 'Output tax, input tax and net tax due for the period.', 'href' => '/statements/tax-summary'],
                 ['name' => 'Financial Ratios', 'description' => 'Liquidity, profitability, leverage and efficiency against your targets.', 'href' => '/statements/ratios'],
@@ -133,6 +136,63 @@ class ReportController extends Controller
                 ? FinancialStatement::with(['company:id,name,parent_id', 'company.parent:id,name', 'generator:id,name', 'approver:id,name'])->find($selected->id)
                 : null,
             'canApprove' => $request->user()->can('companies.manage'),
+        ]);
+    }
+
+    /**
+     * General ledger: live per-account listing of every posting with a
+     * running balance, for the current company.
+     */
+    public function generalLedger(Request $request): Response
+    {
+        $company = $request->user()->currentCompany;
+        [$from, $to] = $this->dates($request);
+        abort_if($from > $to, 422, 'The start date must be before the end date.');
+
+        $accounts = Account::where('company_id', $company->id)
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'type', 'subtype', 'balance_type']);
+
+        $accountId = (int) $request->query('account', 0);
+        $account = ($accountId ? $accounts->firstWhere('id', $accountId) : null) ?? $accounts->first();
+
+        return Inertia::render('Reports/GeneralLedger', [
+            'accounts' => $accounts->map->only(['id', 'code', 'name', 'type']),
+            'report' => $account
+                ? $this->reports->generalLedger([$company->id], $account, $from, $to)
+                : null,
+            'filters' => ['account' => $account?->id, 'from' => $from, 'to' => $to],
+            'scopeLabel' => $company->name,
+        ]);
+    }
+
+    /**
+     * Cash book: the general ledger of a cash/bank/petty-cash account
+     * presented as receipts and payments with a running balance.
+     */
+    public function cashBook(Request $request): Response
+    {
+        $company = $request->user()->currentCompany;
+        [$from, $to] = $this->dates($request);
+        abort_if($from > $to, 422, 'The start date must be before the end date.');
+
+        $moneyAccounts = Account::where('company_id', $company->id)
+            ->whereIn('subtype', Account::MONEY_SUBTYPES)
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'subtype', 'type', 'balance_type']);
+
+        $accountId = (int) $request->query('account', 0);
+        $account = ($accountId ? $moneyAccounts->firstWhere('id', $accountId) : null) ?? $moneyAccounts->first();
+
+        return Inertia::render('Reports/CashBook', [
+            'moneyAccounts' => $moneyAccounts->map->only(['id', 'code', 'name', 'subtype']),
+            'report' => $account
+                ? $this->reports->generalLedger([$company->id], $account, $from, $to)
+                : null,
+            'filters' => ['account' => $account?->id, 'from' => $from, 'to' => $to],
+            'scopeLabel' => $company->name,
         ]);
     }
 

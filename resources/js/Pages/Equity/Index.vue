@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import EquityTabs from '@/Components/EquityTabs.vue';
 import Modal from '@/Components/Modal.vue';
 import OmitTransactionModal from '@/Components/OmitTransactionModal.vue';
 import RowAction from '@/Components/RowAction.vue';
@@ -12,20 +13,43 @@ defineProps({
     transactions: Object,
     summary: Object,
     moneyAccounts: Array,
+    shareholders: Array,
 });
 
 const showModal = ref(false);
 const omitTarget = ref(null);
 const isSystemAdmin = computed(() => usePage().props.auth.user?.is_system_admin === true);
 
+const typeOptions = [
+    { v: 'contribution', l: 'Contribution (money in)' },
+    { v: 'drawing', l: 'Drawing (money out)' },
+    { v: 'share_issue', l: 'Share issue (money in)' },
+];
+
+const typeLabels = { contribution: 'contribution', drawing: 'drawing', share_issue: 'share issue' };
+const typeBadge = {
+    contribution: 'bg-green-100 text-green-800',
+    drawing: 'bg-red-100 text-red-800',
+    share_issue: 'bg-blue-100 text-blue-800',
+};
+
 const form = useForm({
     type: 'contribution',
     date: new Date().toISOString().slice(0, 10),
     owner_name: '',
+    shareholder_id: '',
     amount: '',
+    shares_count: '',
+    share_capital_amount: '',
     money_account_id: '',
     description: '',
     document: null,
+});
+
+const premiumPreview = computed(() => {
+    const total = Number(form.amount || 0);
+    const capital = Number(form.share_capital_amount || 0);
+    return Math.round((total - capital) * 100) / 100;
 });
 
 const submit = () => {
@@ -37,14 +61,16 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Owner's Equity" />
+    <Head title="Equity" />
     <AppLayout>
-        <template #title>Owner's Equity</template>
+        <template #title>Equity</template>
         <template #actions>
             <button v-if="can('equity.manage')" class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" @click="showModal = true">
-                + Record Contribution / Drawing
+                + Record Equity Transaction
             </button>
         </template>
+
+        <EquityTabs active="transactions" />
 
         <div class="mb-6 grid gap-4 md:grid-cols-3">
             <div class="rounded-lg bg-white p-5 shadow-sm">
@@ -56,8 +82,20 @@ const submit = () => {
                 <p class="mt-1 text-2xl font-bold text-red-700">{{ money(summary.drawings) }}</p>
             </div>
             <div class="rounded-lg bg-white p-5 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Net owner's equity</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Net equity movements</p>
                 <p class="mt-1 text-2xl font-bold" :class="summary.net >= 0 ? 'text-gray-800' : 'text-red-700'">{{ money(summary.net) }}</p>
+            </div>
+            <div class="rounded-lg bg-white p-5 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Share capital</p>
+                <p class="mt-1 text-2xl font-bold text-gray-800">{{ money(summary.share_capital) }}</p>
+            </div>
+            <div class="rounded-lg bg-white p-5 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Share premium</p>
+                <p class="mt-1 text-2xl font-bold text-gray-800">{{ money(summary.share_premium) }}</p>
+            </div>
+            <div class="rounded-lg bg-white p-5 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Shares issued</p>
+                <p class="mt-1 text-2xl font-bold text-gray-800">{{ summary.shares_issued.toLocaleString() }}</p>
             </div>
         </div>
 
@@ -67,7 +105,7 @@ const submit = () => {
                     <tr>
                         <th class="px-4 py-3">Date</th>
                         <th class="px-4 py-3">Type</th>
-                        <th class="px-4 py-3">Owner</th>
+                        <th class="px-4 py-3">Owner / Shareholder</th>
                         <th class="px-4 py-3">Account</th>
                         <th class="px-4 py-3">Description</th>
                         <th class="px-4 py-3 text-center">Supporting document</th>
@@ -79,16 +117,26 @@ const submit = () => {
                     <tr v-for="t in transactions.data" :key="t.id" class="border-b last:border-0 hover:bg-gray-50">
                         <td class="px-4 py-2.5 text-gray-500">{{ fmtDate(t.date) }}</td>
                         <td class="px-4 py-2.5">
-                            <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="t.type === 'contribution' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
-                                {{ t.type }}
+                            <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="typeBadge[t.type]">
+                                {{ typeLabels[t.type] ?? t.type }}
                             </span>
+                            <p v-if="t.type === 'share_issue' && t.shares_count" class="mt-1 text-xs text-gray-400">
+                                {{ Number(t.shares_count).toLocaleString() }} shares
+                            </p>
                         </td>
                         <td class="px-4 py-2.5">{{ t.owner_name }}</td>
                         <td class="px-4 py-2.5 text-gray-600">{{ t.money_account?.name }}</td>
-                        <td class="px-4 py-2.5 text-gray-500">{{ t.description ?? '—' }}</td>
+                        <td class="px-4 py-2.5 text-gray-500">
+                            <template v-if="t.type === 'share_issue'">
+                                <span class="text-gray-600">{{ money(t.share_capital_amount) }} capital</span>
+                                <span v-if="Number(t.share_premium_amount) > 0"> + {{ money(t.share_premium_amount) }} premium</span>
+                                <p v-if="t.description" class="text-xs text-gray-400">{{ t.description }}</p>
+                            </template>
+                            <template v-else>{{ t.description ?? '—' }}</template>
+                        </td>
                         <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="t.attachments?.[0]" /></td>
-                        <td class="px-4 py-2.5 text-right font-medium" :class="t.type === 'contribution' ? 'text-green-700' : 'text-red-700'">
-                            {{ t.type === 'contribution' ? '+' : '−' }}{{ money(t.amount) }}
+                        <td class="px-4 py-2.5 text-right font-medium" :class="t.type === 'drawing' ? 'text-red-700' : 'text-green-700'">
+                            {{ t.type === 'drawing' ? '−' : '+' }}{{ money(t.amount) }}
                         </td>
                         <td v-if="isSystemAdmin" class="px-4 py-2.5 text-right">
                             <RowAction variant="danger" @click="omitTarget = t">Omit</RowAction>
@@ -96,7 +144,7 @@ const submit = () => {
                     </tr>
                     <tr v-if="!transactions.data.length">
                         <td :colspan="isSystemAdmin ? 8 : 7" class="px-4 py-8 text-center text-gray-400">
-                            No equity transactions yet. Record the owner's funding here.
+                            No equity transactions yet. Record owner funding and share issues here.
                         </td>
                     </tr>
                 </tbody>
@@ -112,11 +160,11 @@ const submit = () => {
 
         <Modal :show="showModal" @close="showModal = false">
             <form class="p-6" @submit.prevent="submit">
-                <h2 class="mb-4 text-lg font-semibold text-gray-800">Owner's equity transaction</h2>
+                <h2 class="mb-4 text-lg font-semibold text-gray-800">Equity transaction</h2>
 
-                <div class="mb-4 flex gap-2">
+                <div class="mb-4 flex flex-wrap gap-2">
                     <button
-                        v-for="k in [{ v: 'contribution', l: 'Contribution (money in)' }, { v: 'drawing', l: 'Drawing (money out)' }]"
+                        v-for="k in typeOptions"
                         :key="k.v" type="button"
                         class="rounded-md px-3 py-1.5 text-sm font-medium"
                         :class="form.type === k.v ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600'"
@@ -130,20 +178,47 @@ const submit = () => {
                         <input v-model="form.date" type="date" class="w-full rounded-md border-gray-300 text-sm" required />
                     </div>
                     <div>
-                        <label class="mb-1 block text-sm text-gray-600">Amount</label>
+                        <label class="mb-1 block text-sm text-gray-600">{{ form.type === 'share_issue' ? 'Total consideration received' : 'Amount' }}</label>
                         <input v-model="form.amount" type="number" step="0.01" min="0.01" class="w-full rounded-md border-gray-300 text-sm" required />
                     </div>
-                    <div>
+                    <div v-if="form.type === 'share_issue'">
+                        <label class="mb-1 block text-sm text-gray-600">Shareholder</label>
+                        <select v-model="form.shareholder_id" class="w-full rounded-md border-gray-300 text-sm" required>
+                            <option value="" disabled>Select…</option>
+                            <option v-for="s in shareholders" :key="s.id" :value="s.id">{{ s.name }}</option>
+                        </select>
+                        <p v-if="form.errors.shareholder_id" class="mt-1 text-xs text-red-600">{{ form.errors.shareholder_id }}</p>
+                        <p v-else-if="!shareholders.length" class="mt-1 text-xs text-amber-600">
+                            No shareholders registered yet — add them under Master Data › Shareholders first.
+                        </p>
+                    </div>
+                    <div v-else>
                         <label class="mb-1 block text-sm text-gray-600">Owner name</label>
                         <input v-model="form.owner_name" class="w-full rounded-md border-gray-300 text-sm" required />
                     </div>
                     <div>
-                        <label class="mb-1 block text-sm text-gray-600">{{ form.type === 'contribution' ? 'Deposit into' : 'Withdraw from' }}</label>
+                        <label class="mb-1 block text-sm text-gray-600">{{ form.type === 'drawing' ? 'Withdraw from' : 'Deposit into' }}</label>
                         <select v-model="form.money_account_id" class="w-full rounded-md border-gray-300 text-sm" required>
                             <option value="" disabled>Select…</option>
                             <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option>
                         </select>
                     </div>
+                    <template v-if="form.type === 'share_issue'">
+                        <div>
+                            <label class="mb-1 block text-sm text-gray-600">Number of shares</label>
+                            <input v-model="form.shares_count" type="number" step="1" min="1" class="w-full rounded-md border-gray-300 text-sm" required />
+                            <p v-if="form.errors.shares_count" class="mt-1 text-xs text-red-600">{{ form.errors.shares_count }}</p>
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-sm text-gray-600">Share capital (nominal value)</label>
+                            <input v-model="form.share_capital_amount" type="number" step="0.01" min="0.01" class="w-full rounded-md border-gray-300 text-sm" required />
+                            <p v-if="form.errors.share_capital_amount" class="mt-1 text-xs text-red-600">{{ form.errors.share_capital_amount }}</p>
+                            <p v-else class="mt-1 text-xs text-gray-400">
+                                Share premium: {{ money(premiumPreview >= 0 ? premiumPreview : 0) }}
+                                <span v-if="premiumPreview < 0" class="text-red-600">— nominal value cannot exceed the total</span>
+                            </p>
+                        </div>
+                    </template>
                     <div class="sm:col-span-2">
                         <label class="mb-1 block text-sm text-gray-600">Description</label>
                         <input v-model="form.description" class="w-full rounded-md border-gray-300 text-sm" />
@@ -172,7 +247,7 @@ const submit = () => {
         <OmitTransactionModal
             :show="!!omitTarget"
             :url="omitTarget ? `/equity/${omitTarget.id}/omit` : ''"
-            :label="omitTarget ? `The ${omitTarget.type} by ${omitTarget.owner_name} on ${fmtDate(omitTarget.date)}` : ''"
+            :label="omitTarget ? `The ${typeLabels[omitTarget.type] ?? omitTarget.type} by ${omitTarget.owner_name} on ${fmtDate(omitTarget.date)}` : ''"
             @close="omitTarget = null"
         />
     </AppLayout>

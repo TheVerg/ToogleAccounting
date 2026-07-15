@@ -63,7 +63,8 @@ const nav = computed(() => [
             { label: 'Revenue', href: '/income/invoices', icon: 'invoices', show: canDo('invoices.view') },
             { label: 'Payments', href: '/payments', icon: 'payments', show: canDo('payments.view') },
             { label: 'Expenses', href: '/expenses', icon: 'expenses', show: canDo('expenses.view') },
-            { label: "Owner's Equity", href: '/equity', icon: 'equity', show: canDo('equity.view') },
+            { label: 'Equity', href: '/equity', icon: 'equity', show: canDo('equity.view') },
+            { label: 'Shareholder Loans', href: '/shareholder-loans', icon: 'payments', show: canDo('equity.view') },
             { label: 'Intercompany', href: '/intercompany', icon: 'intercompany', show: canDo('intercompany.manage') },
             { label: 'Journal', href: '/journal', icon: 'journal', show: canDo('journals.view') },
         ],
@@ -72,6 +73,8 @@ const nav = computed(() => [
         label: 'Reporting',
         items: [
             { label: 'Financial Statements', href: '/statements/register', icon: 'statements', show: canDo('reports.view') },
+            { label: 'General Ledger', href: '/statements/general-ledger', icon: 'journal', show: canDo('reports.view') },
+            { label: 'Cash Book', href: '/statements/cash-book', icon: 'payments', show: canDo('reports.view') },
             { label: 'Analysis', href: '/analysis', icon: 'benchmarks', show: canDo('reports.view') },
             { label: 'Budgets', href: '/budgets', icon: 'budgets', show: canDo('budgets.view') },
         ],
@@ -88,7 +91,9 @@ const nav = computed(() => [
         label: 'Master Data',
         items: [
             { label: 'Chart of Accounts', href: '/accounts', icon: 'accounts', show: canDo('accounts.view') },
+            { label: 'Opening Balances', href: '/settings/opening-balances', icon: 'journal', show: user.value?.is_system_admin === true },
             { label: 'Contacts', href: '/contacts', icon: 'contacts', show: canDo('contacts.view') },
+            { label: 'Shareholders', href: '/shareholders', icon: 'users', show: canDo('equity.view') },
             { label: 'Tax Rates', href: '/taxes/rates', icon: 'taxes', show: canDo('taxes.manage') },
             { label: 'Ratio Configuration', href: '/settings/ratio-benchmarks', icon: 'benchmarks', show: canDo('reports.view') },
         ],
@@ -169,6 +174,7 @@ const breadcrumbs = computed(() => {
         '/profile': [crumb('My Profile')],
         '/admin/audit-logs': [crumb('Administration'), crumb('Audit Log')],
         '/expenses/recurring': [crumb('Transactions'), crumb('Expenses', '/expenses'), crumb('Recurring')],
+        '/equity/dividends': [crumb('Transactions'), crumb('Equity', '/equity'), crumb('Dividends')],
         '/statements/register': statements,
         '/statements/trial-balance': [...statements, crumb('Trial Balance')],
         '/statements/profit-loss': [...statements, crumb('Profit & Loss')],
@@ -252,7 +258,22 @@ const pageDescription = computed(() => {
         return 'Maintain repeating expense schedules and generate due expenses into the ledger.';
     }
     if (path === '/equity') {
-        return "Record capital injections, drawings, and owner equity movements.";
+        return "Record capital injections, drawings, share issues, and other equity movements.";
+    }
+    if (path === '/equity/dividends') {
+        return 'Declare dividends split by shareholding and track each shareholder’s payment.';
+    }
+    if (path === '/shareholder-loans') {
+        return 'Track money lent to the company by shareholders, outstanding balances, and repayments.';
+    }
+    if (path === '/shareholders') {
+        return 'Maintain the shareholder register: who holds shares, their ownership percentage, investment, and loans.';
+    }
+    if (path === '/statements/general-ledger') {
+        return 'Browse every posting to an account with running balances for any period.';
+    }
+    if (path === '/statements/cash-book') {
+        return 'Follow receipts and payments through each cash and bank account with running balances.';
     }
     if (path === '/intercompany') {
         return 'Manage funding, loans, and balances between companies in the group.';
@@ -307,6 +328,9 @@ const pageDescription = computed(() => {
     }
     if (path === '/admin/audit-logs') {
         return 'Review system activity, data changes, approvals, and user actions for audit control.';
+    }
+    if (path === '/settings/opening-balances') {
+        return 'One-time cutover entry: bring an existing business onto the system with its real account balances.';
     }
     if (path === '/admin/users') {
         return 'Create users, assign company access, and manage role-based permissions.';

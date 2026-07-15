@@ -2,7 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\Account;
 use App\Models\Company;
+use App\Models\Dividend;
+use App\Models\DividendAllocation;
+use App\Models\DividendPayment;
 use App\Models\DocumentSequence;
 use App\Models\EquityTransaction;
 use App\Models\Expense;
@@ -11,6 +15,9 @@ use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Models\JournalEntry;
 use App\Models\Payment;
+use App\Models\Shareholder;
+use App\Models\ShareholderLoan;
+use App\Models\ShareholderLoanRepayment;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -233,12 +240,19 @@ class AccountingService
         });
     }
 
-    /** Owner's equity: contribution (money in) or drawing (money out). */
+    /**
+     * Equity: contribution (money in), drawing (money out), or share
+     * issue (money in, split between share capital and share premium).
+     */
     public function recordEquityTransaction(Company $company, array $data, ?int $userId = null): EquityTransaction
     {
         return DB::transaction(function () use ($company, $data, $userId) {
             $amount = round((float) $data['amount'], 2);
             $type = $data['type'];
+
+            if ($type === 'share_issue') {
+                return $this->recordShareIssue($company, $data, $amount, $userId);
+            }
 
             $equityAccount = $type === 'contribution'
                 ? $this->chart->findBySubtype($company, 'owner_equity')
@@ -279,6 +293,409 @@ class AccountingService
             $tx->update(['journal_entry_id' => $entry->id]);
 
             return $tx;
+        });
+    }
+
+    /**
+     * Shares issued for cash: Dr money for the full consideration,
+     * Cr Share Capital for the nominal value, Cr Share Premium for the
+     * excess paid over nominal. When issued to a registered shareholder,
+     * their shares held in the register grow by the shares issued.
+     */
+    protected function recordShareIssue(Company $company, array $data, float $amount, ?int $userId): EquityTransaction
+    {
+        $capital = round((float) $data['share_capital_amount'], 2);
+        $premium = round($amount - $capital, 2);
+
+        if ($capital <= 0 || $capital > $amount) {
+            throw new InvalidArgumentException(
+                'The share capital (nominal) portion must be positive and cannot exceed the total consideration.'
+            );
+        }
+
+        $shareholder = null;
+        if (! empty($data['shareholder_id'])) {
+            $shareholder = Shareholder::where('company_id', $company->id)
+                ->whereKey($data['shareholder_id'])->lockForUpdate()->firstOrFail();
+        }
+
+        $this->chart->ensureShareCapitalAccounts($company);
+        $capitalAccount = $this->chart->findBySubtype($company, 'share_capital');
+        $premiumAccount = $this->chart->findBySubtype($company, 'share_premium');
+
+        $tx = EquityTransaction::create([
+            'company_id' => $company->id,
+            'type' => 'share_issue',
+            'date' => $data['date'],
+            'owner_name' => $shareholder?->name ?? $data['owner_name'],
+            'shareholder_id' => $shareholder?->id,
+            'shares_count' => $data['shares_count'] ?? null,
+            'amount' => $amount,
+            'share_capital_amount' => $capital,
+            'share_premium_amount' => $premium,
+            'money_account_id' => $data['money_account_id'],
+            'equity_account_id' => $capitalAccount->id,
+            'premium_account_id' => $premium > 0 ? $premiumAccount->id : null,
+            'description' => $data['description'] ?? null,
+            'created_by' => $userId,
+        ]);
+
+        $lines = [
+            ['account_id' => (int) $data['money_account_id'], 'debit' => $amount, 'credit' => 0],
+            ['account_id' => $capitalAccount->id, 'debit' => 0, 'credit' => $capital, 'memo' => 'Nominal value'],
+        ];
+        if ($premium > 0) {
+            $lines[] = ['account_id' => $premiumAccount->id, 'debit' => 0, 'credit' => $premium, 'memo' => 'Premium over nominal'];
+        }
+
+        $shares = $tx->shares_count ? number_format($tx->shares_count).' shares - ' : '';
+        $entry = $this->journal->post(
+            $company,
+            $data['date'],
+            'Share issue - '.$shares.$tx->owner_name,
+            $lines,
+            $tx,
+            null,
+            $userId,
+        );
+
+        $tx->update(['journal_entry_id' => $entry->id]);
+
+        if ($shareholder && $tx->shares_count) {
+            $shareholder->update([
+                'shares_held' => round((float) $shareholder->shares_held + $tx->shares_count, 2),
+            ]);
+        }
+
+        return $tx;
+    }
+
+    /** Shareholder lends money to the company: Dr money, Cr Shareholder Loans. */
+    public function recordShareholderLoan(Company $company, array $data, ?int $userId = null): ShareholderLoan
+    {
+        return DB::transaction(function () use ($company, $data, $userId) {
+            $principal = round((float) $data['principal'], 2);
+            $liabilityAccount = $this->chart->ensureShareholderLoanAccount($company);
+
+            $shareholder = null;
+            if (! empty($data['shareholder_id'])) {
+                $shareholder = Shareholder::where('company_id', $company->id)
+                    ->findOrFail($data['shareholder_id']);
+            }
+
+            $loan = ShareholderLoan::create([
+                'company_id' => $company->id,
+                'loan_no' => DocumentSequence::nextNo($company->id, 'SHL', 'shareholder_loans', 'loan_no'),
+                'lender_name' => $shareholder?->name ?? $data['lender_name'],
+                'shareholder_id' => $shareholder?->id,
+                'date' => $data['date'],
+                'principal' => $principal,
+                'outstanding_balance' => $principal,
+                'status' => 'active',
+                'description' => $data['description'] ?? null,
+                'money_account_id' => $data['money_account_id'],
+                'liability_account_id' => $liabilityAccount->id,
+                'created_by' => $userId,
+            ]);
+
+            $entry = $this->journal->post(
+                $company,
+                $data['date'],
+                'Shareholder loan '.$loan->loan_no.' from '.$loan->lender_name,
+                [
+                    ['account_id' => (int) $data['money_account_id'], 'debit' => $principal, 'credit' => 0, 'memo' => $loan->loan_no],
+                    ['account_id' => $liabilityAccount->id, 'debit' => 0, 'credit' => $principal, 'memo' => $loan->loan_no],
+                ],
+                $loan,
+                $loan->loan_no,
+                $userId,
+            );
+
+            $loan->update(['journal_entry_id' => $entry->id]);
+
+            return $loan;
+        });
+    }
+
+    /** Repay part or all of a shareholder loan: Dr Shareholder Loans, Cr money. */
+    public function recordShareholderLoanRepayment(ShareholderLoan $loan, array $data, ?int $userId = null): ShareholderLoanRepayment
+    {
+        $amount = round((float) $data['amount'], 2);
+
+        return DB::transaction(function () use ($loan, $data, $amount, $userId) {
+            // Row lock so concurrent repayments cannot both pass the
+            // outstanding-balance check and overpay the loan.
+            $loan = ShareholderLoan::whereKey($loan->id)->lockForUpdate()->firstOrFail();
+
+            if ($loan->status !== 'active') {
+                throw new InvalidArgumentException('Repayments can only be recorded against active loans.');
+            }
+            if ($amount <= 0 || $amount > (float) $loan->outstanding_balance + 0.005) {
+                throw new InvalidArgumentException('Repayment amount exceeds the outstanding loan balance.');
+            }
+
+            $repayment = $loan->repayments()->create([
+                'company_id' => $loan->company_id,
+                'date' => $data['date'],
+                'amount' => $amount,
+                'reference' => $data['reference'] ?? null,
+                'money_account_id' => $data['money_account_id'],
+                'created_by' => $userId,
+            ]);
+
+            $entry = $this->journal->post(
+                $loan->company,
+                $data['date'],
+                'Repayment of shareholder loan '.$loan->loan_no.' to '.$loan->lender_name,
+                [
+                    ['account_id' => $loan->liability_account_id, 'debit' => $amount, 'credit' => 0, 'memo' => $loan->loan_no],
+                    ['account_id' => (int) $data['money_account_id'], 'debit' => 0, 'credit' => $amount, 'memo' => $loan->loan_no],
+                ],
+                $repayment,
+                $data['reference'] ?? null,
+                $userId,
+            );
+
+            $repayment->update(['journal_entry_id' => $entry->id]);
+
+            $repaid = round((float) $loan->total_repaid + $amount, 2);
+            $outstanding = round((float) $loan->principal - $repaid, 2);
+            $loan->update([
+                'total_repaid' => $repaid,
+                'outstanding_balance' => max($outstanding, 0),
+                'status' => $outstanding < 0.005 ? 'repaid' : 'active',
+            ]);
+
+            return $repayment;
+        });
+    }
+
+    /**
+     * One-time cutover entry that brings an existing business onto the
+     * system: every account's real balance as at the cutover date, with
+     * any difference posted openly to a chosen equity account. Guarded
+     * to a single posted opening entry per company; optionally locks
+     * all periods before the cutover.
+     */
+    public function recordOpeningBalances(Company $company, array $data, ?int $userId = null): JournalEntry
+    {
+        return DB::transaction(function () use ($company, $data, $userId) {
+            $existing = JournalEntry::where('company_id', $company->id)
+                ->where('reference', 'OPENING')
+                ->where('status', 'posted')
+                ->first();
+            if ($existing) {
+                throw new InvalidArgumentException(
+                    "An opening balance entry already exists ({$existing->entry_no}). Reverse or omit it from the Journal before entering new opening balances."
+                );
+            }
+
+            $lines = [];
+            $debits = 0.0;
+            $credits = 0.0;
+            foreach ($data['lines'] as $line) {
+                $debit = round((float) ($line['debit'] ?? 0), 2);
+                $credit = round((float) ($line['credit'] ?? 0), 2);
+                if ($debit <= 0 && $credit <= 0) {
+                    continue;
+                }
+                if ($debit > 0 && $credit > 0) {
+                    throw new InvalidArgumentException('Enter each account balance on one side only (debit or credit).');
+                }
+                $lines[] = [
+                    'account_id' => (int) $line['account_id'],
+                    'debit' => $debit,
+                    'credit' => $credit,
+                    'memo' => 'Opening balance',
+                ];
+                $debits = round($debits + $debit, 2);
+                $credits = round($credits + $credit, 2);
+            }
+
+            if ($lines === []) {
+                throw new InvalidArgumentException('Enter at least one opening balance.');
+            }
+
+            // Post the difference openly to the chosen equity account so
+            // the entry balances without hiding anything.
+            $difference = round($debits - $credits, 2);
+            if ($difference != 0.0) {
+                $balancing = Account::where('company_id', $company->id)
+                    ->where('type', 'equity')
+                    ->findOrFail((int) $data['balancing_account_id']);
+                $lines[] = [
+                    'account_id' => $balancing->id,
+                    'debit' => $difference < 0 ? -$difference : 0,
+                    'credit' => $difference > 0 ? $difference : 0,
+                    'memo' => 'Opening balance equity (balancing figure)',
+                ];
+            }
+
+            $entry = $this->journal->post(
+                $company,
+                $data['date'],
+                'Opening balances as at '.$data['date'],
+                $lines,
+                null,
+                'OPENING',
+                $userId,
+            );
+
+            if (! empty($data['lock_prior_periods'])) {
+                $company->update(['locked_before' => $data['date']]);
+            }
+
+            return $entry;
+        });
+    }
+
+    /**
+     * Profit available to distribute: accumulated earnings (all-time
+     * income minus expenses) less dividends already declared.
+     */
+    public function distributableProfit(Company $company): float
+    {
+        $sums = DB::table('journal_lines as jl')
+            ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+            ->join('accounts as a', 'a.id', '=', 'jl.account_id')
+            ->whereIn('je.status', ['posted', 'reversed'])
+            ->where('je.company_id', $company->id)
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN a.type = 'income' THEN jl.credit - jl.debit ELSE 0 END), 0) as income,
+                COALESCE(SUM(CASE WHEN a.type = 'expense' THEN jl.debit - jl.credit ELSE 0 END), 0) as expense,
+                COALESCE(SUM(CASE WHEN a.subtype = 'dividends_declared' THEN jl.debit - jl.credit ELSE 0 END), 0) as declared
+            ")
+            ->first();
+
+        return round((float) $sums->income - (float) $sums->expense - (float) $sums->declared, 2);
+    }
+
+    /**
+     * Declare a dividend: the total is split across active shareholders
+     * in proportion to their shares on the declaration date, and posted
+     * as Dr Dividends Declared (contra-equity), Cr Dividends Payable.
+     * Capped at distributable profit.
+     */
+    public function declareDividend(Company $company, array $data, ?int $userId = null): Dividend
+    {
+        return DB::transaction(function () use ($company, $data, $userId) {
+            $total = round((float) $data['total_amount'], 2);
+
+            $shareholders = Shareholder::where('company_id', $company->id)
+                ->where('is_active', true)->where('shares_held', '>', 0)
+                ->lockForUpdate()->orderBy('name')->get();
+            if ($shareholders->isEmpty()) {
+                throw new InvalidArgumentException(
+                    'Register at least one active shareholder with shares before declaring a dividend.'
+                );
+            }
+
+            $distributable = $this->distributableProfit($company);
+            if ($total > $distributable + 0.005) {
+                throw new InvalidArgumentException(
+                    'Only '.number_format(max($distributable, 0), 2).' of retained profit is available to distribute.'
+                );
+            }
+
+            $this->chart->ensureDividendAccounts($company);
+            $declared = $this->chart->findBySubtype($company, 'dividends_declared');
+            $payable = $this->chart->findBySubtype($company, 'dividend_payable');
+
+            $dividend = Dividend::create([
+                'company_id' => $company->id,
+                'dividend_no' => DocumentSequence::nextNo($company->id, 'DIV', 'dividends', 'dividend_no'),
+                'date' => $data['date'],
+                'total_amount' => $total,
+                'status' => 'declared',
+                'description' => $data['description'] ?? null,
+                'created_by' => $userId,
+            ]);
+
+            // Split by shareholding; the last allocation absorbs any
+            // rounding remainder so the pieces always sum to the total.
+            $totalShares = (float) $shareholders->sum('shares_held');
+            $allocated = 0.0;
+            foreach ($shareholders as $i => $shareholder) {
+                $amount = $i === $shareholders->count() - 1
+                    ? round($total - $allocated, 2)
+                    : round($total * (float) $shareholder->shares_held / $totalShares, 2);
+                $allocated = round($allocated + $amount, 2);
+
+                $dividend->allocations()->create([
+                    'company_id' => $company->id,
+                    'shareholder_id' => $shareholder->id,
+                    'shareholder_name' => $shareholder->name,
+                    'shares' => $shareholder->shares_held,
+                    'percent' => round((float) $shareholder->shares_held / $totalShares * 100, 4),
+                    'amount' => $amount,
+                ]);
+            }
+
+            $entry = $this->journal->post(
+                $company,
+                $data['date'],
+                'Dividend '.$dividend->dividend_no.' declared ('.$shareholders->count().' shareholders)',
+                [
+                    ['account_id' => $declared->id, 'debit' => $total, 'credit' => 0, 'memo' => $dividend->dividend_no],
+                    ['account_id' => $payable->id, 'debit' => 0, 'credit' => $total, 'memo' => $dividend->dividend_no],
+                ],
+                $dividend,
+                $dividend->dividend_no,
+                $userId,
+            );
+
+            $dividend->update(['journal_entry_id' => $entry->id]);
+
+            return $dividend;
+        });
+    }
+
+    /** Pay (part of) one shareholder's dividend: Dr Dividends Payable, Cr money. */
+    public function recordDividendPayment(DividendAllocation $allocation, array $data, ?int $userId = null): DividendPayment
+    {
+        $amount = round((float) $data['amount'], 2);
+
+        return DB::transaction(function () use ($allocation, $data, $amount, $userId) {
+            $allocation = DividendAllocation::whereKey($allocation->id)->lockForUpdate()->firstOrFail();
+            $dividend = Dividend::whereKey($allocation->dividend_id)->lockForUpdate()->firstOrFail();
+            $company = $dividend->company;
+
+            if ($dividend->status === 'reversed') {
+                throw new InvalidArgumentException('This dividend declaration has been reversed.');
+            }
+            if ($amount <= 0 || $amount > $allocation->outstanding() + 0.005) {
+                throw new InvalidArgumentException("Payment exceeds this shareholder's unpaid dividend balance.");
+            }
+
+            $payment = $allocation->payments()->create([
+                'company_id' => $company->id,
+                'date' => $data['date'],
+                'amount' => $amount,
+                'reference' => $data['reference'] ?? null,
+                'money_account_id' => $data['money_account_id'],
+                'created_by' => $userId,
+            ]);
+
+            $payable = $this->chart->findBySubtype($company, 'dividend_payable');
+            $entry = $this->journal->post(
+                $company,
+                $data['date'],
+                'Dividend '.$dividend->dividend_no.' paid to '.$allocation->shareholder_name,
+                [
+                    ['account_id' => $payable->id, 'debit' => $amount, 'credit' => 0, 'memo' => $dividend->dividend_no],
+                    ['account_id' => (int) $data['money_account_id'], 'debit' => 0, 'credit' => $amount, 'memo' => $dividend->dividend_no],
+                ],
+                $payment,
+                $data['reference'] ?? null,
+                $userId,
+            );
+
+            $payment->update(['journal_entry_id' => $entry->id]);
+
+            $allocation->update(['paid_amount' => round((float) $allocation->paid_amount + $amount, 2)]);
+            $dividend->refreshStatus();
+
+            return $payment;
         });
     }
 
@@ -389,6 +806,82 @@ class AccountingService
                 $invoice->update([
                     'amount_paid' => max($paid, 0),
                     'status' => $paid < 0.005 ? 'sent' : 'partially_paid',
+                ]);
+                $source->forceFill(['reversed_at' => now()])->save();
+
+                return $reversal;
+            }
+
+            if ($source instanceof Dividend) {
+                $dividend = Dividend::whereKey($source->id)->lockForUpdate()->firstOrFail();
+                if ((float) $dividend->allocations()->sum('paid_amount') > 0) {
+                    throw new InvalidArgumentException(
+                        'This dividend has payments recorded; reverse the payment entries first.'
+                    );
+                }
+
+                $reversal = $this->journal->reverse($entry, $date, $userId);
+                $dividend->update(['status' => 'reversed']);
+                $dividend->forceFill(['reversed_at' => now()])->save();
+
+                return $reversal;
+            }
+
+            if ($source instanceof DividendPayment) {
+                $allocation = DividendAllocation::whereKey($source->dividend_allocation_id)->lockForUpdate()->firstOrFail();
+
+                $reversal = $this->journal->reverse($entry, $date, $userId);
+
+                $allocation->update([
+                    'paid_amount' => max(round((float) $allocation->paid_amount - (float) $source->amount, 2), 0),
+                ]);
+                $allocation->dividend->refreshStatus();
+                $source->forceFill(['reversed_at' => now()])->save();
+
+                return $reversal;
+            }
+
+            // Reversing a share issue takes the shares back off the
+            // shareholder's register entry.
+            if ($source instanceof EquityTransaction && $source->type === 'share_issue') {
+                $reversal = $this->journal->reverse($entry, $date, $userId);
+
+                if ($source->shareholder_id && $source->shares_count) {
+                    $shareholder = Shareholder::whereKey($source->shareholder_id)->lockForUpdate()->first();
+                    $shareholder?->update([
+                        'shares_held' => max(round((float) $shareholder->shares_held - $source->shares_count, 2), 0),
+                    ]);
+                }
+                $source->forceFill(['reversed_at' => now()])->save();
+
+                return $reversal;
+            }
+
+            if ($source instanceof ShareholderLoan) {
+                $loan = ShareholderLoan::whereKey($source->id)->lockForUpdate()->firstOrFail();
+                if ((float) $loan->total_repaid > 0) {
+                    throw new InvalidArgumentException(
+                        'This loan has repayments recorded; reverse the repayment entries first.'
+                    );
+                }
+
+                $reversal = $this->journal->reverse($entry, $date, $userId);
+                $loan->update(['status' => 'reversed', 'outstanding_balance' => 0]);
+                $loan->forceFill(['reversed_at' => now()])->save();
+
+                return $reversal;
+            }
+
+            if ($source instanceof ShareholderLoanRepayment) {
+                $loan = ShareholderLoan::whereKey($source->shareholder_loan_id)->lockForUpdate()->firstOrFail();
+
+                $reversal = $this->journal->reverse($entry, $date, $userId);
+
+                $repaid = max(round((float) $loan->total_repaid - (float) $source->amount, 2), 0);
+                $loan->update([
+                    'total_repaid' => $repaid,
+                    'outstanding_balance' => round((float) $loan->principal - $repaid, 2),
+                    'status' => 'active',
                 ]);
                 $source->forceFill(['reversed_at' => now()])->save();
 

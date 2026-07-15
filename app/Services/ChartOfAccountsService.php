@@ -38,9 +38,13 @@ class ChartOfAccountsService
             'group' => 'Current Liabilities'],
         ['code' => '2120', 'name' => 'Payroll Deductions Payable', 'type' => 'liability', 'subtype' => 'payroll_deduction', 'system' => true,
             'group' => 'Current Liabilities'],
+        ['code' => '2130', 'name' => 'Dividends Payable', 'type' => 'liability', 'subtype' => 'dividend_payable', 'system' => true,
+            'group' => 'Current Liabilities'],
         ['code' => '2200', 'name' => 'Intercompany Payable', 'type' => 'liability', 'subtype' => 'intercompany', 'system' => true,
             'group' => 'Current Liabilities', 'line' => 'Intercompany balances'],
         ['code' => '2300', 'name' => 'Loans Payable', 'type' => 'liability', 'subtype' => 'loan',
+            'group' => 'Non-current Liabilities'],
+        ['code' => '2350', 'name' => 'Shareholder Loans', 'type' => 'liability', 'subtype' => 'shareholder_loan', 'system' => true,
             'group' => 'Non-current Liabilities'],
         // Equity
         ['code' => '3000', 'name' => "Owner's Capital", 'type' => 'equity', 'subtype' => 'owner_equity', 'system' => true,
@@ -49,8 +53,14 @@ class ChartOfAccountsService
             'group' => 'Equity', 'balance_type' => 'debit'], // contra-equity: subtracts
         ['code' => '3200', 'name' => 'Share Capital from Parent', 'type' => 'equity', 'subtype' => 'intercompany_capital', 'system' => true,
             'group' => 'Equity'],
+        ['code' => '3300', 'name' => 'Share Capital', 'type' => 'equity', 'subtype' => 'share_capital', 'system' => true,
+            'group' => 'Equity'],
+        ['code' => '3400', 'name' => 'Share Premium', 'type' => 'equity', 'subtype' => 'share_premium', 'system' => true,
+            'group' => 'Equity'],
         ['code' => '3900', 'name' => 'Retained Earnings', 'type' => 'equity', 'subtype' => 'retained_earnings', 'system' => true,
             'group' => 'Equity'],
+        ['code' => '3950', 'name' => 'Dividends Declared', 'type' => 'equity', 'subtype' => 'dividends_declared', 'system' => true,
+            'group' => 'Equity', 'balance_type' => 'debit'], // contra-equity: distributions reduce equity
         // Income
         ['code' => '4000', 'name' => 'Sales Revenue', 'type' => 'income', 'subtype' => 'sales', 'system' => true,
             'group' => 'Revenue'],
@@ -147,6 +157,68 @@ class ChartOfAccountsService
                 'is_active' => true,
                 'statement_group' => 'Current Assets',
                 'statement_line' => 'Trade and other receivables',
+            ],
+        );
+    }
+
+    /**
+     * Ensure the share capital / share premium equity accounts exist
+     * (for companies whose chart was seeded before share issues). Idempotent.
+     */
+    public function ensureShareCapitalAccounts(Company $company): void
+    {
+        $accounts = [
+            ['code' => '3300', 'name' => 'Share Capital', 'subtype' => 'share_capital'],
+            ['code' => '3400', 'name' => 'Share Premium', 'subtype' => 'share_premium'],
+        ];
+
+        foreach ($accounts as $a) {
+            Account::firstOrCreate(
+                ['company_id' => $company->id, 'code' => $a['code']],
+                [
+                    'name' => $a['name'], 'type' => 'equity', 'subtype' => $a['subtype'],
+                    'is_system' => true, 'is_active' => true,
+                    'statement_group' => 'Equity',
+                ],
+            );
+        }
+    }
+
+    /**
+     * Ensure the dividend accounts exist (for companies whose chart was
+     * seeded before dividends). Idempotent.
+     */
+    public function ensureDividendAccounts(Company $company): void
+    {
+        Account::firstOrCreate(
+            ['company_id' => $company->id, 'code' => '2130'],
+            [
+                'name' => 'Dividends Payable', 'type' => 'liability', 'subtype' => 'dividend_payable',
+                'is_system' => true, 'is_active' => true,
+                'statement_group' => 'Current Liabilities',
+            ],
+        );
+        Account::firstOrCreate(
+            ['company_id' => $company->id, 'code' => '3950'],
+            [
+                'name' => 'Dividends Declared', 'type' => 'equity', 'subtype' => 'dividends_declared',
+                'is_system' => true, 'is_active' => true,
+                'statement_group' => 'Equity', 'balance_type' => 'debit',
+            ],
+        );
+    }
+
+    public function ensureShareholderLoanAccount(Company $company): Account
+    {
+        return Account::firstOrCreate(
+            ['company_id' => $company->id, 'code' => '2350'],
+            [
+                'name' => 'Shareholder Loans',
+                'type' => 'liability',
+                'subtype' => 'shareholder_loan',
+                'is_system' => true,
+                'is_active' => true,
+                'statement_group' => 'Non-current Liabilities',
             ],
         );
     }

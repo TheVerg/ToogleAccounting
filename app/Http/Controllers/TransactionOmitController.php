@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Dividend;
+use App\Models\DividendPayment;
 use App\Models\EquityTransaction;
 use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\ShareholderLoan;
+use App\Models\ShareholderLoanRepayment;
 use App\Services\TransactionOmitService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
@@ -36,6 +40,26 @@ class TransactionOmitController extends Controller
     public function equity(Request $request, EquityTransaction $equityTransaction, TransactionOmitService $service): RedirectResponse
     {
         return $this->omit($request, $equityTransaction, $service);
+    }
+
+    public function shareholderLoan(Request $request, ShareholderLoan $shareholderLoan, TransactionOmitService $service): RedirectResponse
+    {
+        return $this->omit($request, $shareholderLoan, $service);
+    }
+
+    public function shareholderLoanRepayment(Request $request, ShareholderLoanRepayment $repayment, TransactionOmitService $service): RedirectResponse
+    {
+        return $this->omit($request, $repayment, $service);
+    }
+
+    public function dividend(Request $request, Dividend $dividend, TransactionOmitService $service): RedirectResponse
+    {
+        return $this->omit($request, $dividend, $service);
+    }
+
+    public function dividendPayment(Request $request, DividendPayment $dividendPayment, TransactionOmitService $service): RedirectResponse
+    {
+        return $this->omit($request, $dividendPayment, $service);
     }
 
     protected function omit(Request $request, Model $source, TransactionOmitService $service): RedirectResponse

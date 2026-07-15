@@ -8,6 +8,7 @@ use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanySwitchController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DividendController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeLoanController;
 use App\Http\Controllers\EquityController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\InvoiceExportController;
 use App\Http\Controllers\InvoicePdfController;
 use App\Http\Controllers\JournalEntryController;
+use App\Http\Controllers\OpeningBalanceController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PaymentExportController;
 use App\Http\Controllers\PayrollController;
@@ -27,6 +29,8 @@ use App\Http\Controllers\RatioBenchmarkController;
 use App\Http\Controllers\RecurringExpenseController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\ShareholderController;
+use App\Http\Controllers\ShareholderLoanController;
 use App\Http\Controllers\StatementExportController;
 use App\Http\Controllers\StatementImportController;
 use App\Http\Controllers\StatementRegisterController;
@@ -67,6 +71,10 @@ Route::middleware(['auth', 'company'])->group(function () {
     Route::delete('/expenses/{expense}/omit', [TransactionOmitController::class, 'expense'])->name('expenses.omit');
     Route::delete('/payments/{payment}/omit', [TransactionOmitController::class, 'payment'])->name('payments.omit');
     Route::delete('/equity/{equityTransaction}/omit', [TransactionOmitController::class, 'equity'])->name('equity.omit');
+    Route::delete('/shareholder-loans/{shareholderLoan}/omit', [TransactionOmitController::class, 'shareholderLoan'])->name('shareholder-loans.omit');
+    Route::delete('/shareholder-loans/repayments/{repayment}/omit', [TransactionOmitController::class, 'shareholderLoanRepayment'])->name('shareholder-loans.repayments.omit');
+    Route::delete('/equity/dividends/{dividend}/omit', [TransactionOmitController::class, 'dividend'])->name('dividends.omit');
+    Route::delete('/equity/dividends/payments/{dividendPayment}/omit', [TransactionOmitController::class, 'dividendPayment'])->name('dividends.payments.omit');
 
     // Contacts
     Route::get('/contacts', [ContactController::class, 'index'])
@@ -160,6 +168,31 @@ Route::middleware(['auth', 'company'])->group(function () {
     Route::post('/equity', [EquityController::class, 'store'])
         ->middleware('permission:equity.manage')->name('equity.store');
 
+    // Dividends (tab of the Equity page)
+    Route::get('/equity/dividends', [DividendController::class, 'index'])
+        ->middleware('permission:equity.view')->name('dividends.index');
+    Route::post('/equity/dividends', [DividendController::class, 'store'])
+        ->middleware('permission:equity.manage')->name('dividends.store');
+    Route::post('/equity/dividends/allocations/{allocation}/payments', [DividendController::class, 'storePayment'])
+        ->middleware('permission:equity.manage')->name('dividends.payments.store');
+
+    // Shareholder register (master data)
+    Route::get('/shareholders', [ShareholderController::class, 'index'])
+        ->middleware('permission:equity.view')->name('shareholders.index');
+    Route::middleware('permission:equity.manage')->group(function () {
+        Route::post('/shareholders', [ShareholderController::class, 'store'])->name('shareholders.store');
+        Route::put('/shareholders/{shareholder}', [ShareholderController::class, 'update'])->name('shareholders.update');
+        Route::delete('/shareholders/{shareholder}', [ShareholderController::class, 'destroy'])->name('shareholders.destroy');
+    });
+
+    // Shareholder loans (liability funding from shareholders)
+    Route::get('/shareholder-loans', [ShareholderLoanController::class, 'index'])
+        ->middleware('permission:equity.view')->name('shareholder-loans.index');
+    Route::post('/shareholder-loans', [ShareholderLoanController::class, 'store'])
+        ->middleware('permission:equity.manage')->name('shareholder-loans.store');
+    Route::post('/shareholder-loans/{shareholderLoan}/repayments', [ShareholderLoanController::class, 'storeRepayment'])
+        ->middleware('permission:equity.manage')->name('shareholder-loans.repayments.store');
+
     // Intercompany funding
     Route::get('/intercompany', [IntercompanyController::class, 'index'])
         ->middleware('permission:intercompany.manage')->name('intercompany.index');
@@ -218,6 +251,9 @@ Route::middleware(['auth', 'company'])->group(function () {
             Route::delete('/register/{financialStatement}', [StatementRegisterController::class, 'destroy'])->name('statements.register.destroy');
         });
         Route::get('/budget-vs-actual', [ReportController::class, 'budgetVsActual'])->name('reports.budget-vs-actual');
+        // Live ledger views (not registered snapshots).
+        Route::get('/general-ledger', [ReportController::class, 'generalLedger'])->name('reports.general-ledger');
+        Route::get('/cash-book', [ReportController::class, 'cashBook'])->name('reports.cash-book');
         // Statement type pages: period-based views of registered snapshots.
         Route::get('/{type}', [ReportController::class, 'view'])
             ->whereIn('type', ['trial-balance', 'profit-loss', 'balance-sheet', 'cash-flow', 'tax-summary', 'ratios'])
@@ -233,6 +269,10 @@ Route::middleware(['auth', 'company'])->group(function () {
         ->middleware('permission:companies.manage')->name('companies.update');
     Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])
         ->middleware('permission:companies.manage')->name('companies.destroy');
+
+    // Opening balances (master data; system admin only, enforced in controller)
+    Route::get('/settings/opening-balances', [OpeningBalanceController::class, 'index'])->name('settings.opening-balances.index');
+    Route::post('/settings/opening-balances', [OpeningBalanceController::class, 'store'])->name('settings.opening-balances.store');
 
     // User administration (system admin)
     Route::middleware('permission:users.manage')->group(function () {

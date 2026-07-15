@@ -283,7 +283,7 @@ class ReportService
             $section = match (true) {
                 in_array($counterpart->acc_subtype, self::INTERCOMPANY_SUBTYPES, true) => 'financing',
                 $counterpart->acc_type === 'equity' => 'financing',
-                $counterpart->acc_subtype === 'loan' => 'financing',
+                in_array($counterpart->acc_subtype, ['loan', 'shareholder_loan'], true) => 'financing',
                 $counterpart->acc_subtype === 'fixed_asset' => 'investing',
                 default => 'operating',
             };
@@ -450,6 +450,89 @@ class ReportService
         ];
     }
 
+    /**
+     * General ledger for one account: opening balance, every posted line
+     * in the period with its counterpart accounts, and a running balance.
+     * Balances follow the account's normal side (a credit-normal account
+     * grows when credited). Also serves the cash book for money accounts,
+     * where debits are receipts and credits are payments.
+     */
+    public function generalLedger(array $companyIds, Account $account, ?string $from, ?string $to): array
+    {
+        $debitNormal = $account->effectiveBalanceType() === 'debit';
+        $sign = fn (float $debit, float $credit) => $debitNormal ? $debit - $credit : $credit - $debit;
+
+        $opening = 0.0;
+        if ($from) {
+            $movement = DB::table('journal_lines as jl')
+                ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+                ->whereIn('je.status', ['posted', 'reversed'])
+                ->whereIn('je.company_id', $companyIds)
+                ->where('jl.account_id', $account->id)
+                ->whereDate('je.date', '<', $from)
+                ->selectRaw('COALESCE(SUM(jl.debit),0) as debit, COALESCE(SUM(jl.credit),0) as credit')
+                ->first();
+            $opening = round($sign((float) $movement->debit, (float) $movement->credit), 2);
+        }
+
+        $lines = DB::table('journal_lines as jl')
+            ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+            ->whereIn('je.status', ['posted', 'reversed'])
+            ->whereIn('je.company_id', $companyIds)
+            ->where('jl.account_id', $account->id)
+            ->when($from, fn ($q) => $q->whereDate('je.date', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('je.date', '<=', $to))
+            ->orderBy('je.date')->orderBy('je.id')->orderBy('jl.id')
+            ->select('je.id as entry_id', 'je.date', 'je.entry_no', 'je.description',
+                'je.reference', 'jl.memo', 'jl.debit', 'jl.credit')
+            ->get();
+
+        // Counterpart accounts on the same entries: the "particulars"
+        // column a classic ledger shows against each posting.
+        $counterparts = DB::table('journal_lines as jl')
+            ->join('accounts as a', 'a.id', '=', 'jl.account_id')
+            ->whereIn('jl.journal_entry_id', $lines->pluck('entry_id')->unique())
+            ->where('jl.account_id', '!=', $account->id)
+            ->select('jl.journal_entry_id', 'a.name')
+            ->get()
+            ->groupBy('journal_entry_id')
+            ->map(fn ($rows) => $rows->pluck('name')->unique()->implode(', '));
+
+        $running = $opening;
+        $rows = $lines->map(function ($l) use (&$running, $sign, $counterparts) {
+            $debit = (float) $l->debit;
+            $credit = (float) $l->credit;
+            $running = round($running + $sign($debit, $credit), 2);
+
+            return [
+                'date' => $l->date,
+                'entry_no' => $l->entry_no,
+                'description' => $l->description,
+                'reference' => $l->reference,
+                'memo' => $l->memo,
+                'counterpart' => $counterparts[$l->entry_id] ?? null,
+                'debit' => $debit,
+                'credit' => $credit,
+                'balance' => $running,
+            ];
+        })->values();
+
+        return [
+            'account' => [
+                'id' => $account->id,
+                'code' => $account->code,
+                'name' => $account->name,
+                'type' => $account->type,
+                'balance_side' => $debitNormal ? 'debit' : 'credit',
+            ],
+            'opening_balance' => $opening,
+            'total_debit' => round($lines->sum('debit'), 2),
+            'total_credit' => round($lines->sum('credit'), 2),
+            'closing_balance' => $running,
+            'rows' => $rows,
+        ];
+    }
+
     /** Current balance of every money (cash/bank/petty cash) account. */
     public function moneyBalances(array $companyIds): Collection
     {
@@ -586,9 +669,9 @@ class ReportService
         $cash = round($assets->filter(fn ($r) => in_array($r->subtype, self::MONEY_SUBTYPES, true))->sum($debitBalance), 2);
         $receivables = round($assets->where('subtype', 'receivable')->sum($debitBalance), 2);
 
-        // Long-term loans are the only non-current liabilities in the template.
+        // Long-term and shareholder loans are the template's non-current liabilities.
         $totalLiabilities = round($liabilities->sum($creditBalance), 2);
-        $currentLiabilities = round($liabilities->reject(fn ($r) => $r->subtype === 'loan')->sum($creditBalance), 2);
+        $currentLiabilities = round($liabilities->reject(fn ($r) => in_array($r->subtype, ['loan', 'shareholder_loan'], true))->sum($creditBalance), 2);
 
         $allTimeEarnings = round(
             $rows->where('type', 'income')->sum($creditBalance)
