@@ -22,6 +22,7 @@ const currentCompanyId = computed(() => page.props.auth?.currentCompany?.id);
 const isSystemAdmin = computed(() => page.props.auth.user?.is_system_admin === true);
 const showCreate = ref(false);
 const payingInvoice = ref(null);
+const viewingInvoice = ref(null);
 const showExport = ref(false);
 const omitTarget = ref(null);
 const customerMode = ref('existing');
@@ -227,6 +228,7 @@ const statusBadge = {
                         </td>
                         <td class="px-4 py-2.5">
                             <div class="flex flex-wrap items-center justify-end gap-2">
+                                <RowAction v-if="can('invoices.view')" @click="viewingInvoice = inv">View</RowAction>
                                 <RowAction v-if="can('invoices.manage') && belongsToSelectedCompany(inv) && inv.status === 'draft'" variant="info" @click="issueDraft(inv)">Issue</RowAction>
                                 <RowAction v-if="can('invoices.view')" variant="primary" :href="`/income/invoices/${inv.id}/pdf`">Invoice PDF</RowAction>
                                 <RowAction
@@ -410,6 +412,75 @@ const statusBadge = {
                     </div>
                 </div>
             </form>
+        </Modal>
+
+        <!-- Invoice breakdown -->
+        <Modal :show="!!viewingInvoice" max-width="3xl" @close="viewingInvoice = null">
+            <div v-if="viewingInvoice" class="p-6">
+                <div class="mb-1 flex items-center gap-3">
+                    <h2 class="text-lg font-semibold text-gray-800">{{ viewingInvoice.invoice_no }}</h2>
+                    <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="statusBadge[viewingInvoice.status]">
+                        {{ viewingInvoice.status.replace('_', ' ') }}
+                    </span>
+                </div>
+                <p class="mb-4 text-sm text-gray-500">
+                    {{ viewingInvoice.contact?.name }} · {{ viewingInvoice.company?.name }}
+                    · Issued {{ fmtDate(viewingInvoice.issue_date) }}<template v-if="viewingInvoice.due_date"> · Due {{ fmtDate(viewingInvoice.due_date) }}</template>
+                </p>
+
+                <table class="w-full text-sm">
+                    <thead class="border-b text-left text-xs uppercase tracking-wide text-gray-400">
+                        <tr>
+                            <th class="py-2">Income category</th>
+                            <th class="py-2">Description</th>
+                            <th class="py-2 text-right">Qty</th>
+                            <th class="py-2 text-right">Unit price</th>
+                            <th class="py-2 text-right">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="item in viewingInvoice.items" :key="item.id" class="border-b last:border-0">
+                            <td class="py-2 pr-2 text-gray-600">{{ item.account ? `${item.account.code} · ${item.account.name}` : '-' }}</td>
+                            <td class="py-2 pr-2">{{ item.description }}</td>
+                            <td class="py-2 pr-2 text-right">{{ Number(item.quantity) }}</td>
+                            <td class="py-2 pr-2 text-right">{{ money(item.unit_price) }}</td>
+                            <td class="py-2 text-right font-medium">{{ money(item.amount) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="mt-4 flex justify-end">
+                    <div class="w-72 space-y-1 text-sm">
+                        <p class="flex justify-between text-gray-600"><span>Subtotal</span><span>{{ money(viewingInvoice.subtotal) }}</span></p>
+                        <p class="flex justify-between text-gray-600">
+                            <span>Tax{{ viewingInvoice.tax_rate ? ` (${viewingInvoice.tax_rate.name})` : '' }}</span>
+                            <span>{{ money(viewingInvoice.tax_amount) }}</span>
+                        </p>
+                        <p class="flex justify-between border-t pt-1 font-semibold text-gray-800"><span>Total</span><span>{{ money(viewingInvoice.total) }}</span></p>
+                        <p class="flex justify-between text-gray-600"><span>Paid</span><span>{{ money(viewingInvoice.amount_paid) }}</span></p>
+                        <p class="flex justify-between font-medium" :class="Number(viewingInvoice.total) - Number(viewingInvoice.amount_paid) > 0 ? 'text-amber-700' : 'text-green-700'">
+                            <span>Balance due</span><span>{{ money(Number(viewingInvoice.total) - Number(viewingInvoice.amount_paid)) }}</span>
+                        </p>
+                    </div>
+                </div>
+
+                <div v-if="viewingInvoice.payments?.length" class="mt-4 border-t pt-3">
+                    <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Payments</h3>
+                    <p v-for="p in viewingInvoice.payments" :key="p.id" class="flex justify-between py-0.5 text-sm text-gray-600">
+                        <span>{{ fmtDate(p.date) }} · {{ (p.method ?? '').replace('_', ' ') }}<template v-if="p.reference"> · {{ p.reference }}</template></span>
+                        <span class="font-medium">{{ money(p.amount) }}</span>
+                    </p>
+                </div>
+
+                <p v-if="viewingInvoice.notes" class="mt-4 rounded-md bg-gray-50 p-3 text-sm text-gray-600">{{ viewingInvoice.notes }}</p>
+
+                <div class="mt-6 flex justify-end gap-3">
+                    <a :href="`/income/invoices/${viewingInvoice.id}/pdf`" class="rounded-md border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50">
+                        Invoice PDF
+                    </a>
+                    <button type="button" class="rounded-md border border-gray-300 px-4 py-2 text-sm" @click="viewingInvoice = null">Close</button>
+                </div>
+            </div>
         </Modal>
 
         <!-- Record payment -->

@@ -35,7 +35,8 @@ class InvoiceController extends Controller
                 ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
                 ->when($filters['from'] ?? null, fn ($query, $from) => $query->whereDate('issue_date', '>=', $from))
                 ->when($filters['to'] ?? null, fn ($query, $to) => $query->whereDate('issue_date', '<=', $to))
-                ->with(['company:id,name,parent_id', 'company.parent:id,name', 'contact:id,name', 'items', 'payments',
+                ->with(['company:id,name,parent_id', 'company.parent:id,name', 'contact:id,name',
+                    'items.account:id,code,name', 'payments', 'taxRate:id,name,rate',
                     'attachments:id,attachable_id,attachable_type,original_name'])
                 ->latest('issue_date')->latest('id')
                 ->paginate(15)->withQueryString(),
