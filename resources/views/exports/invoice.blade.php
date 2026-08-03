@@ -117,6 +117,9 @@
                         @if ($item->account)
                             <div class="muted small">{{ $item->account->code }} - {{ $item->account->name }}</div>
                         @endif
+                        @if ($item->taxes->isNotEmpty())
+                            <div class="muted small">{{ $item->taxes->map(fn ($tax) => $tax->tax_name.' '.number_format((float) $tax->rate, 2).'%')->join(' + ') }}</div>
+                        @endif
                     </td>
                     <td class="num">{{ number_format((float) $item->quantity, 2) }}</td>
                     <td class="num">{{ number_format((float) $item->unit_price, 2) }}</td>
@@ -132,9 +135,10 @@
             <td class="num">{{ number_format((float) $invoice->subtotal, 2) }}</td>
         </tr>
         <tr>
-            <td>Tax{{ $invoice->taxRate ? ' ('.$invoice->taxRate->name.')' : '' }}</td>
+            <td>Tax{{ $invoice->taxGroup ? ' ('.$invoice->taxGroup->name.')' : ($invoice->taxRate ? ' ('.$invoice->taxRate->name.')' : '') }}</td>
             <td class="num">{{ number_format((float) $invoice->tax_amount, 2) }}</td>
         </tr>
+        <tr><td>Price treatment</td><td class="num">Tax {{ $invoice->tax_mode }}</td></tr>
         <tr class="total">
             <td>Total</td>
             <td class="num">{{ number_format((float) $invoice->total, 2) }}</td>
@@ -177,6 +181,33 @@
         <div class="notes">
             <div class="section-title">Notes</div>
             <div class="box small">{!! nl2br(e($invoice->notes)) !!}</div>
+        </div>
+    @endif
+
+    @if (($fiscal ?? null) !== null)
+        {{-- ZIMRA fiscalisation block: QR verification code is a legal requirement --}}
+        <div style="margin-top: 14px; border: 1px solid #cbd5e1; padding: 10px;">
+            <table style="width: 100%; border: 0;">
+                <tr>
+                    <td style="border: 0; vertical-align: top;">
+                        <div class="section-title">ZIMRA Fiscal Invoice</div>
+                        <table style="border: 0;" class="small">
+                            <tr><td style="border: 0; padding: 1px 8px 1px 0;" class="muted">Device ID</td><td style="border: 0; padding: 1px 0;">{{ $fiscal->device->device_id }}</td></tr>
+                            <tr><td style="border: 0; padding: 1px 8px 1px 0;" class="muted">Fiscal day / receipt</td><td style="border: 0; padding: 1px 0;">{{ $fiscal->day?->fiscal_day_no }} / {{ $fiscal->receipt_counter }}</td></tr>
+                            <tr><td style="border: 0; padding: 1px 8px 1px 0;" class="muted">Receipt global no</td><td style="border: 0; padding: 1px 0;">{{ $fiscal->receipt_global_no }}</td></tr>
+                            @if ($fiscal->qr_data)
+                                <tr><td style="border: 0; padding: 1px 8px 1px 0;" class="muted">Verification code</td><td style="border: 0; padding: 1px 0;">{{ $fiscal->qr_data }}</td></tr>
+                            @endif
+                            <tr><td style="border: 0; padding: 1px 8px 1px 0;" class="muted">Verify at</td><td style="border: 0; padding: 1px 0;">{{ $fiscal->verification_url }}</td></tr>
+                        </table>
+                    </td>
+                    @if (($fiscalQr ?? null) !== null)
+                        <td style="border: 0; width: 150px; text-align: right; vertical-align: top;">
+                            <img src="{{ $fiscalQr }}" alt="ZIMRA verification QR" style="width: 140px; height: 140px;" />
+                        </td>
+                    @endif
+                </tr>
+            </table>
         </div>
     @endif
 </body>

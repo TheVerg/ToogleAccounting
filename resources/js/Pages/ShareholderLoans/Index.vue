@@ -234,7 +234,7 @@ const omitLabel = computed(() => {
                         <label class="mb-1 block text-sm text-gray-600">Deposit into</label>
                         <select v-model="loanForm.money_account_id" class="w-full rounded-md border-gray-300 text-sm" required>
                             <option value="" disabled>Select…</option>
-                            <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option>
+                            <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}{{ a.currency ? ` (${a.currency})` : '' }}</option>
                         </select>
                     </div>
                     <div class="sm:col-span-2">
@@ -283,7 +283,7 @@ const omitLabel = computed(() => {
                         <label class="mb-1 block text-sm text-gray-600">Pay from</label>
                         <select v-model="repayForm.money_account_id" class="w-full rounded-md border-gray-300 text-sm" required>
                             <option value="" disabled>Select…</option>
-                            <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option>
+                            <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}{{ a.currency ? ` (${a.currency})` : '' }}</option>
                         </select>
                     </div>
                     <div>

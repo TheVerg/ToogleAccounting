@@ -72,7 +72,7 @@ const submitReopen = () => reopenForm.post('/statements/general-ledger/reopen', 
                 <div class="min-w-64">
                     <label class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Account</label>
                     <select v-model="account" class="w-full rounded-md border-gray-300 py-1.5 text-sm" @change="apply">
-                        <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option>
+                        <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}{{ a.currency ? ` (${a.currency})` : '' }}</option>
                     </select>
                 </div>
                 <div>

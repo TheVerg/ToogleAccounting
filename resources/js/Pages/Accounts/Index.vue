@@ -2,7 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import RowAction from '@/Components/RowAction.vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { can } from '@/lib/helpers';
 
@@ -11,10 +11,16 @@ const props = defineProps({ accounts: Array, standardGroups: Object, standardLin
 const showModal = ref(false);
 const editing = ref(null);
 
+const baseCurrency = computed(() => usePage().props.auth?.currentCompany?.currency ?? 'USD');
+const MONEY_SUBTYPES = ['cash', 'bank', 'petty_cash'];
+
 const form = useForm({
-    code: '', name: '', type: 'expense', subtype: '', description: '', is_active: true,
+    code: '', name: '', type: 'expense', subtype: '', currency: '', description: '', is_active: true,
+    default_hs_code: '',
     statement: '', statement_group: '', statement_line: '', balance_type: '',
 });
+
+const isMoneyForm = computed(() => form.type === 'asset' && MONEY_SUBTYPES.includes(form.subtype));
 
 // Built-in standard groups/lines first, then anything custom already in use.
 const statementGroups = computed(() => [...new Set([
@@ -38,6 +44,8 @@ const openEdit = (account) => {
     form.name = account.name;
     form.type = account.type;
     form.subtype = account.subtype ?? '';
+    form.currency = account.currency ?? '';
+    form.default_hs_code = account.default_hs_code ?? '';
     form.description = account.description ?? '';
     form.is_active = account.is_active;
     form.statement = account.statement ?? '';
@@ -51,6 +59,8 @@ const submit = () => {
     const options = { preserveScroll: true, onSuccess: () => (showModal.value = false) };
     form.transform((data) => ({
         ...data,
+        currency: data.currency || null,
+        default_hs_code: data.default_hs_code || null,
         statement: data.statement || null,
         statement_group: data.statement_group || null,
         statement_line: data.statement_line || null,
@@ -103,6 +113,7 @@ const typeBadge = {
                         <td class="px-4 py-2.5 font-mono text-xs">{{ a.code }}</td>
                         <td class="px-4 py-2.5">
                             {{ a.name }}
+                            <span v-if="a.currency" class="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">{{ a.currency }}</span>
                             <span v-if="a.is_system" class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase text-gray-500">system</span>
                         </td>
                         <td class="px-4 py-2.5">
@@ -147,6 +158,30 @@ const typeBadge = {
                         <label class="mb-1 block text-sm text-gray-600">Name</label>
                         <input v-model="form.name" class="w-full rounded-md border-gray-300 text-sm" required />
                         <p v-if="form.errors.name" class="mt-1 text-xs text-red-600">{{ form.errors.name }}</p>
+                    </div>
+                    <div v-if="form.type === 'asset'">
+                        <label class="mb-1 block text-sm text-gray-600">Money account</label>
+                        <select v-model="form.subtype" :disabled="editing?.is_system" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-100">
+                            <option value="">Not a money account</option>
+                            <option value="cash">Cash</option>
+                            <option value="bank">Bank</option>
+                            <option value="petty_cash">Petty cash</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-400">Cash, bank and petty cash accounts hold actual money</p>
+                    </div>
+                    <div v-if="form.type === 'income'">
+                        <label class="mb-1 block text-sm text-gray-600">Default HS code</label>
+                        <input v-model="form.default_hs_code" maxlength="8" class="w-full rounded-md border-gray-300 text-sm" placeholder="e.g. 99001000" />
+                        <p class="mt-1 text-xs text-gray-400">Auto-fills invoice lines for ZIMRA fiscalisation</p>
+                    </div>
+                    <div v-if="isMoneyForm">
+                        <label class="mb-1 block text-sm text-gray-600">Currency</label>
+                        <select v-model="form.currency" class="w-full rounded-md border-gray-300 text-sm">
+                            <option value="">{{ baseCurrency }} (base)</option>
+                            <option v-for="c in ['USD', 'ZWG'].filter((c) => c !== baseCurrency)" :key="c" :value="c">{{ c }}</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-400">Transactions through this account happen in its currency</p>
+                        <p v-if="form.errors.currency" class="mt-1 text-xs text-red-600">{{ form.errors.currency }}</p>
                     </div>
                     <div class="sm:col-span-2">
                         <label class="mb-1 block text-sm text-gray-600">Description (optional)</label>

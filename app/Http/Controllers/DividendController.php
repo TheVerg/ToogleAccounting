@@ -59,7 +59,7 @@ class DividendController extends Controller
             ])->values(),
             'moneyAccounts' => Account::where('company_id', $companyId)
                 ->whereIn('subtype', Account::MONEY_SUBTYPES)->where('is_active', true)
-                ->orderBy('code')->get(['id', 'code', 'name']),
+                ->orderBy('code')->get(['id', 'code', 'name', 'currency']),
         ]);
     }
 

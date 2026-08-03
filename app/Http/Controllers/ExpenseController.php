@@ -54,7 +54,7 @@ class ExpenseController extends Controller
                 ->orderBy('code')->get(['id', 'code', 'name']),
             'moneyAccounts' => Account::where('company_id', $companyId)
                 ->whereIn('subtype', ['cash', 'bank', 'petty_cash'])->where('is_active', true)
-                ->orderBy('code')->get(['id', 'code', 'name', 'subtype']),
+                ->orderBy('code')->get(['id', 'code', 'name', 'subtype', 'currency']),
             'vendors' => Contact::where('company_id', $companyId)
                 ->whereIn('type', ['vendor', 'both'])->where('is_active', true)
                 ->orderBy('name')->get(['id', 'name']),
@@ -81,6 +81,7 @@ class ExpenseController extends Controller
                 Rule::exists('accounts', 'id')->where('company_id', $companyId)->where('type', 'expense')],
             'paid_from_account_id' => ['required', 'integer', CompanyRules::moneyAccount($companyId)],
             'amount' => ['required', 'numeric', 'min:0.01'],
+            'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'tax_rate_id' => ['nullable', 'integer', CompanyRules::taxRate($companyId)],
             'contact_id' => ['nullable', 'integer',
                 Rule::exists('contacts', 'id')->where('company_id', $companyId)],

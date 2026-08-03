@@ -14,12 +14,16 @@ class ShareholderLoanRepayment extends Model
     protected $fillable = [
         'company_id', 'shareholder_loan_id', 'date', 'amount', 'reference',
         'money_account_id', 'journal_entry_id', 'created_by',
+        'exchange_rate', 'base_amount', 'fx_gain_loss',
     ];
 
     protected $casts = [
         'date' => 'date',
         'amount' => 'decimal:2',
         'reversed_at' => 'datetime',
+        'exchange_rate' => 'decimal:6',
+        'base_amount' => 'decimal:2',
+        'fx_gain_loss' => 'decimal:2',
     ];
 
     public function company(): BelongsTo

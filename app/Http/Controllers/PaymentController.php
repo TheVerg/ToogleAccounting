@@ -31,14 +31,14 @@ class PaymentController extends Controller
                 ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('kind', $status))
                 ->when($filters['from'] ?? null, fn ($query, $from) => $query->whereDate('date', '>=', $from))
                 ->when($filters['to'] ?? null, fn ($query, $to) => $query->whereDate('date', '<=', $to))
-                ->with(['contact:id,name', 'fromAccount:id,code,name',
-                    'toAccount:id,code,name', 'categoryAccount:id,code,name',
+                ->with(['contact:id,name', 'fromAccount:id,code,name,currency',
+                    'toAccount:id,code,name,currency', 'categoryAccount:id,code,name',
                     'attachments:id,attachable_id,attachable_type,original_name'])
                 ->latest('date')->latest('id')
                 ->paginate(15)->withQueryString(),
             'moneyAccounts' => Account::where('company_id', $companyId)
                 ->whereIn('subtype', ['cash', 'bank', 'petty_cash'])->where('is_active', true)
-                ->orderBy('code')->get(['id', 'code', 'name']),
+                ->orderBy('code')->get(['id', 'code', 'name', 'currency']),
             'categoryAccounts' => Account::where('company_id', $companyId)
                 ->whereIn('type', ['expense', 'liability', 'asset'])
                 ->whereNotIn('subtype', ['cash', 'bank', 'petty_cash'])
@@ -63,6 +63,9 @@ class PaymentController extends Controller
             'kind' => ['required', Rule::in(['outgoing', 'transfer'])],
             'date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'min:0.01'],
+            'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
+            'to_amount' => ['nullable', 'numeric', 'min:0.01'],
+            'to_exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'from_account_id' => ['required', 'integer', CompanyRules::moneyAccount($companyId)],
             'to_account_id' => ['required_if:kind,transfer', 'nullable', 'integer', 'different:from_account_id',
                 CompanyRules::moneyAccount($companyId)],

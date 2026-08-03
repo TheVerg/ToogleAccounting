@@ -16,6 +16,7 @@ class ShareholderLoan extends Model
         'company_id', 'loan_no', 'lender_name', 'shareholder_id', 'date', 'principal',
         'total_repaid', 'outstanding_balance', 'status', 'description',
         'money_account_id', 'liability_account_id', 'journal_entry_id', 'created_by',
+        'currency', 'exchange_rate', 'base_principal',
     ];
 
     protected $casts = [
@@ -24,6 +25,8 @@ class ShareholderLoan extends Model
         'total_repaid' => 'decimal:2',
         'outstanding_balance' => 'decimal:2',
         'reversed_at' => 'datetime',
+        'exchange_rate' => 'decimal:6',
+        'base_principal' => 'decimal:2',
     ];
 
     public function company(): BelongsTo

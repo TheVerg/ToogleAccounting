@@ -52,7 +52,7 @@ class ShareholderLoanController extends Controller
             ],
             'moneyAccounts' => Account::where('company_id', $companyId)
                 ->whereIn('subtype', Account::MONEY_SUBTYPES)->where('is_active', true)
-                ->orderBy('code')->get(['id', 'code', 'name']),
+                ->orderBy('code')->get(['id', 'code', 'name', 'currency']),
             'shareholders' => Shareholder::where('company_id', $companyId)
                 ->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'filters' => ['status' => $filters['status'] ?? ''],

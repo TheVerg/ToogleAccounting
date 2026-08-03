@@ -54,6 +54,7 @@ const icons = {
     roles: 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z',
     audit: 'M9 12h6m-6 4h6m2.25 5H6.75A2.25 2.25 0 014.5 18.75V5.25A2.25 2.25 0 016.75 3h6.879c.597 0 1.169.237 1.591.659l2.621 2.621c.422.422.659.994.659 1.591v10.879A2.25 2.25 0 0117.25 21zM13.5 3.75V7.5c0 .414.336.75.75.75H18',
     benchmarks: 'M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75',
+    queries: 'M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z',
 };
 
 const nav = computed(() => [
@@ -75,6 +76,8 @@ const nav = computed(() => [
             { label: 'Financial Statements', href: '/statements/register', icon: 'statements', show: canDo('reports.view') },
             { label: 'General Ledger', href: '/statements/general-ledger', icon: 'journal', show: canDo('reports.view') },
             { label: 'Cash Book', href: '/statements/cash-book', icon: 'payments', show: canDo('reports.view') },
+            { label: 'Tax by Currency', href: '/statements/tax-by-currency', icon: 'taxes', show: canDo('reports.view') },
+            { label: 'Tax Compliance', href: '/compliance', icon: 'taxes', show: canDo('compliance.view') },
             { label: 'Analysis', href: '/analysis', icon: 'benchmarks', show: canDo('reports.view') },
             { label: 'Budgets', href: '/budgets', icon: 'budgets', show: canDo('budgets.view') },
         ],
@@ -92,9 +95,11 @@ const nav = computed(() => [
         items: [
             { label: 'Chart of Accounts', href: '/accounts', icon: 'accounts', show: canDo('accounts.view') },
             { label: 'Opening Balances', href: '/settings/opening-balances', icon: 'journal', show: user.value?.is_system_admin === true },
+            { label: 'Fiscalisation', href: '/settings/fiscalisation', icon: 'taxes', show: user.value?.is_system_admin === true },
             { label: 'Contacts', href: '/contacts', icon: 'contacts', show: canDo('contacts.view') },
             { label: 'Shareholders', href: '/shareholders', icon: 'users', show: canDo('equity.view') },
             { label: 'Tax Rates', href: '/taxes/rates', icon: 'taxes', show: canDo('taxes.manage') },
+            { label: 'Exchange Rates', href: '/settings/exchange-rates', icon: 'taxes', show: canDo('accounts.view') },
             { label: 'Ratio Configuration', href: '/settings/ratio-benchmarks', icon: 'benchmarks', show: canDo('reports.view') },
         ],
     },
@@ -105,6 +110,14 @@ const nav = computed(() => [
             { label: 'Audit Log', href: '/admin/audit-logs', icon: 'audit', show: canDo('users.manage') },
             { label: 'Users', href: '/admin/users', icon: 'users', show: canDo('users.manage') },
             { label: 'Roles & Permissions', href: '/admin/roles', icon: 'roles', show: canDo('roles.manage') },
+            { label: 'Queries', href: '/support/queries', icon: 'queries', show: true },
+        ],
+    },
+    {
+        label: 'Platform',
+        items: [
+            { label: 'Registered Businesses', href: '/platform/businesses', icon: 'companies', show: user.value?.is_platform_admin === true },
+            { label: 'Queries Inbox', href: '/platform/queries', icon: 'queries', show: user.value?.is_platform_admin === true },
         ],
     },
 ]
@@ -243,6 +256,12 @@ const pageDescription = computed(() => {
     if (path === '/analysis') {
         return 'Explore operational, workforce, group, and management reporting for better business decisions.';
     }
+    if (path === '/compliance') {
+        return 'Reconcile books to FDMS, prepare VAT working papers, control approvals, and retain filing evidence.';
+    }
+    if (path === '/compliance/accountant') {
+        return 'Prioritise returns, deadlines, and unresolved compliance work across assigned clients.';
+    }
     if (path === '/income/invoices') {
         return 'Track revenue records, customer balances, payments received, and export filtered revenue reports.';
     }
@@ -319,6 +338,15 @@ const pageDescription = computed(() => {
     }
     if (path === '/taxes/rates') {
         return 'Configure tax rates used when recording revenue, expenses, and tax summaries.';
+    }
+    if (path === '/settings/exchange-rates') {
+        return 'Enter daily exchange rates for multi-currency trading; the latest rate carries forward.';
+    }
+    if (path === '/settings/fiscalisation') {
+        return 'Register this company\'s ZIMRA fiscal device and monitor fiscal days and receipt submissions.';
+    }
+    if (path === '/statements/tax-by-currency') {
+        return 'Tax collected and paid per currency of trade, as ZIMRA expects it declared.';
     }
     if (path === '/settings/ratio-benchmarks') {
         return 'Set benchmark targets and custom ratios for financial ratio reporting.';

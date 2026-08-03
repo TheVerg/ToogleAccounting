@@ -15,7 +15,10 @@ class CompanyController extends Controller
     public function index(): Response
     {
         return Inertia::render('Companies/Index', [
-            'companies' => Company::with('parent:id,name')
+            'companies' => Company::with([
+                'parent:id,name',
+                'fiscalDevices:id,company_id,environment,status',
+            ])
                 ->withCount('users')
                 ->orderByRaw("CASE type WHEN 'holding' THEN 0 ELSE 1 END")
                 ->orderBy('name')
@@ -25,11 +28,14 @@ class CompanyController extends Controller
 
     public function store(Request $request, ChartOfAccountsService $chart): RedirectResponse
     {
+        $tenantId = $request->user()->tenant_id;
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'code' => ['required', 'string', 'max:20', 'unique:companies,code'],
+            'code' => ['required', 'string', 'max:20',
+                Rule::unique('companies', 'code')->where('tenant_id', $tenantId)],
             'type' => ['required', Rule::in(['holding', 'subsidiary'])],
-            'parent_id' => ['nullable', 'integer', 'exists:companies,id'],
+            'parent_id' => ['nullable', 'integer',
+                Rule::exists('companies', 'id')->where('tenant_id', $tenantId)],
             'currency' => ['required', 'string', 'size:3'],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:40'],
@@ -51,11 +57,14 @@ class CompanyController extends Controller
 
     public function update(Request $request, Company $company): RedirectResponse
     {
+        $tenantId = $request->user()->tenant_id;
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'code' => ['required', 'string', 'max:20', Rule::unique('companies', 'code')->ignore($company->id)],
+            'code' => ['required', 'string', 'max:20',
+                Rule::unique('companies', 'code')->where('tenant_id', $tenantId)->ignore($company->id)],
             'type' => ['required', Rule::in(['holding', 'subsidiary'])],
-            'parent_id' => ['nullable', 'integer', 'exists:companies,id', Rule::notIn([$company->id])],
+            'parent_id' => ['nullable', 'integer', Rule::notIn([$company->id]),
+                Rule::exists('companies', 'id')->where('tenant_id', $tenantId)],
             'currency' => ['required', 'string', 'size:3'],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:40'],

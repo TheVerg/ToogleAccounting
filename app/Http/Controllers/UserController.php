@@ -32,6 +32,10 @@ class UserController extends Controller
             ])
             ->groupBy('user_id');
 
+        // Company/User queries are tenant-scoped globally; employees are
+        // scoped through their company.
+        $tenantCompanyIds = Company::pluck('id');
+
         return Inertia::render('Admin/Users', [
             'users' => User::with(['companies:id,name', 'employee:id,user_id,company_id,first_name,last_name'])->orderBy('name')->get()
                 ->map(fn ($u) => [
@@ -54,6 +58,7 @@ class UserController extends Controller
             'roles' => Role::orderBy('name')->pluck('name'),
             'companies' => Company::orderBy('name')->get(['id', 'name']),
             'employees' => Employee::with('company:id,name', 'user:id,name,email')
+                ->whereIn('company_id', $tenantCompanyIds)
                 ->orderBy('first_name')
                 ->orderBy('last_name')
                 ->get()
@@ -71,12 +76,17 @@ class UserController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        // Only this tenant's companies/employees can be referenced; the
+        // new user inherits the creator's tenant automatically.
+        $tenantCompanyIds = Company::pluck('id')->all();
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'unique:users,email'],
-            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'employee_id' => ['nullable', 'integer',
+                Rule::exists('employees', 'id')->whereIn('company_id', $tenantCompanyIds)],
             'assignments' => ['required', 'array', 'min:1'],
-            'assignments.*.company_id' => ['required', 'integer', 'distinct', 'exists:companies,id'],
+            'assignments.*.company_id' => ['required', 'integer', 'distinct', Rule::in($tenantCompanyIds)],
             'assignments.*.role' => ['required', 'string', 'exists:roles,name'],
         ]);
         $this->validateEmployeeLink($request, $data['employee_id'] ?? null);
@@ -103,12 +113,15 @@ class UserController extends Controller
 
     public function update(Request $request, User $user): RedirectResponse
     {
+        $tenantCompanyIds = Company::pluck('id')->all();
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'employee_id' => ['nullable', 'integer',
+                Rule::exists('employees', 'id')->whereIn('company_id', $tenantCompanyIds)],
             'assignments' => ['required', 'array', 'min:1'],
-            'assignments.*.company_id' => ['required', 'integer', 'distinct', 'exists:companies,id'],
+            'assignments.*.company_id' => ['required', 'integer', 'distinct', Rule::in($tenantCompanyIds)],
             'assignments.*.role' => ['required', 'string', 'exists:roles,name'],
         ]);
         $this->validateEmployeeLink($request, $data['employee_id'] ?? null, $user);

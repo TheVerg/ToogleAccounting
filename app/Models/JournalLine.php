@@ -10,11 +10,15 @@ class JournalLine extends Model
 {
     protected $fillable = [
         'journal_entry_id', 'account_id', 'debit', 'credit', 'memo',
+        'currency', 'fx_rate', 'currency_debit', 'currency_credit',
     ];
 
     protected $casts = [
         'debit' => 'decimal:2',
         'credit' => 'decimal:2',
+        'fx_rate' => 'decimal:6',
+        'currency_debit' => 'decimal:2',
+        'currency_credit' => 'decimal:2',
     ];
 
     /** Lines of posted entries are immutable, like the entries themselves. */

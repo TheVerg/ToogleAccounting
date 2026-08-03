@@ -6,14 +6,20 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\BudgetController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanySwitchController;
+use App\Http\Controllers\ComplianceController;
+use App\Http\Controllers\ComplianceEvidencePackController;
+use App\Http\Controllers\AccountantComplianceController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DividendController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeLoanController;
 use App\Http\Controllers\EquityController;
+use App\Http\Controllers\ExchangeRateController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\ExpenseExportController;
+use App\Http\Controllers\FiscalDayController;
+use App\Http\Controllers\FiscalDeviceController;
 use App\Http\Controllers\IntercompanyController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\InvoiceExportController;
@@ -25,6 +31,8 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PeriodLockController;
 use App\Http\Controllers\PaymentExportController;
 use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\Platform\BusinessController as PlatformBusinessController;
+use App\Http\Controllers\Platform\QueryController as PlatformQueryController;
 use App\Http\Controllers\PayrollPayslipController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RatioBenchmarkController;
@@ -35,8 +43,11 @@ use App\Http\Controllers\ShareholderController;
 use App\Http\Controllers\ShareholderLoanController;
 use App\Http\Controllers\StatementExportController;
 use App\Http\Controllers\StatementImportController;
+use App\Http\Controllers\SupportQueryController;
 use App\Http\Controllers\StatementRegisterController;
+use App\Http\Controllers\TaxByCurrencyController;
 use App\Http\Controllers\TaxRateController;
+use App\Http\Controllers\TaxGroupController;
 use App\Http\Controllers\TransactionOmitController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -103,6 +114,7 @@ Route::middleware(['auth', 'company'])->group(function () {
         Route::post('/income/invoices', [InvoiceController::class, 'store'])->name('invoices.store');
         Route::post('/income/invoices/{invoice}/issue', [InvoiceController::class, 'issue'])->name('invoices.issue');
         Route::post('/income/invoices/{invoice}/payments', [InvoiceController::class, 'recordPayment'])->name('invoices.payments.store');
+        Route::post('/income/invoices/{invoice}/credit-note', [InvoiceController::class, 'creditNote'])->name('invoices.credit-note');
     });
 
     // Payments
@@ -222,6 +234,16 @@ Route::middleware(['auth', 'company'])->group(function () {
         Route::delete('/settings/ratio-benchmarks/custom/{customRatio}', [RatioBenchmarkController::class, 'destroyCustom'])->name('settings.ratios.custom.destroy');
     });
 
+    // Exchange rates (multi-currency master data)
+    Route::get('/settings/exchange-rates', [ExchangeRateController::class, 'index'])
+        ->middleware('permission:accounts.view')->name('settings.exchange-rates.index');
+    Route::post('/settings/exchange-rates', [ExchangeRateController::class, 'store'])
+        ->middleware('permission:accounts.manage')->name('settings.exchange-rates.store');
+    Route::post('/settings/exchange-rates/fetch', [ExchangeRateController::class, 'fetchNow'])
+        ->middleware('permission:accounts.manage')->name('settings.exchange-rates.fetch');
+    Route::delete('/settings/exchange-rates/{exchangeRate}', [ExchangeRateController::class, 'destroy'])
+        ->middleware('permission:accounts.manage')->name('settings.exchange-rates.destroy');
+
     // Tax rates
     Route::get('/taxes/rates', [TaxRateController::class, 'index'])
         ->middleware('permission:taxes.manage')->name('taxes.rates.index');
@@ -231,6 +253,30 @@ Route::middleware(['auth', 'company'])->group(function () {
         ->middleware('permission:taxes.manage')->name('taxes.rates.update');
     Route::delete('/taxes/rates/{taxRate}', [TaxRateController::class, 'destroy'])
         ->middleware('permission:taxes.manage')->name('taxes.rates.destroy');
+    Route::post('/taxes/groups', [TaxGroupController::class, 'store'])
+        ->middleware('permission:taxes.manage')->name('taxes.groups.store');
+    Route::put('/taxes/groups/{taxGroup}', [TaxGroupController::class, 'update'])
+        ->middleware('permission:taxes.manage')->name('taxes.groups.update');
+    Route::put('/taxes/defaults', [TaxGroupController::class, 'updateCompanyDefaults'])
+        ->middleware('permission:taxes.manage')->name('taxes.defaults.update');
+
+    // Compliance workspace, VAT7 working papers, calendar and evidence.
+    Route::middleware('permission:compliance.view')->prefix('compliance')->group(function () {
+        Route::get('/', [ComplianceController::class, 'index'])->name('compliance.index');
+        Route::get('/accountant', AccountantComplianceController::class)->name('compliance.accountant');
+        Route::get('/returns/{complianceReturn}/evidence-pack', ComplianceEvidencePackController::class)->name('compliance.evidence');
+        Route::middleware('permission:compliance.manage')->group(function () {
+            Route::post('/returns', [ComplianceController::class, 'store'])->name('compliance.returns.store');
+            Route::post('/returns/{complianceReturn}/adjustments', [ComplianceController::class, 'addAdjustment'])->name('compliance.adjustments.store');
+            Route::delete('/returns/{complianceReturn}/adjustments/{adjustment}', [ComplianceController::class, 'deleteAdjustment'])->name('compliance.adjustments.destroy');
+            Route::post('/deadlines', [ComplianceController::class, 'storeDeadline'])->name('compliance.deadlines.store');
+            Route::post('/tasks', [ComplianceController::class, 'storeTask'])->name('compliance.tasks.store');
+            Route::post('/tasks/{task}/complete', [ComplianceController::class, 'completeTask'])->name('compliance.tasks.complete');
+            Route::post('/returns/{complianceReturn}/amend', [ComplianceController::class, 'amend'])->name('compliance.returns.amend');
+        });
+        Route::post('/returns/{complianceReturn}/transition', [ComplianceController::class, 'transition'])
+            ->middleware('permission:compliance.manage')->name('compliance.returns.transition');
+    });
 
     // Statements
     Route::get('/analysis', [ReportController::class, 'analysis'])
@@ -254,6 +300,7 @@ Route::middleware(['auth', 'company'])->group(function () {
         });
         Route::get('/budget-vs-actual', [ReportController::class, 'budgetVsActual'])->name('reports.budget-vs-actual');
         // Live ledger views (not registered snapshots).
+        Route::get('/tax-by-currency', TaxByCurrencyController::class)->name('reports.tax-by-currency');
         Route::get('/general-ledger', [ReportController::class, 'generalLedger'])->name('reports.general-ledger');
         Route::get('/general-ledger/export', LedgerExportController::class)->name('reports.general-ledger.export');
         Route::get('/cash-book', [ReportController::class, 'cashBook'])->name('reports.cash-book');
@@ -280,6 +327,15 @@ Route::middleware(['auth', 'company'])->group(function () {
     Route::get('/settings/opening-balances', [OpeningBalanceController::class, 'index'])->name('settings.opening-balances.index');
     Route::post('/settings/opening-balances', [OpeningBalanceController::class, 'store'])->name('settings.opening-balances.store');
 
+    // ZIMRA fiscalisation (system admin only, enforced in controllers)
+    Route::get('/settings/fiscalisation', [FiscalDeviceController::class, 'index'])->name('settings.fiscalisation.index');
+    Route::post('/settings/fiscalisation', [FiscalDeviceController::class, 'store'])->name('settings.fiscalisation.store');
+    Route::post('/settings/fiscalisation/day/open', [FiscalDayController::class, 'open'])->name('settings.fiscalisation.day.open');
+    Route::post('/settings/fiscalisation/day/close', [FiscalDayController::class, 'close'])->name('settings.fiscalisation.day.close');
+    Route::post('/settings/fiscalisation/day/sync', [FiscalDayController::class, 'sync'])->name('settings.fiscalisation.day.sync');
+    Route::post('/income/invoices/{invoice}/fiscalise', [FiscalDayController::class, 'retry'])
+        ->middleware('permission:invoices.manage')->name('invoices.fiscalise.retry');
+
     // User administration (system admin)
     Route::middleware('permission:users.manage')->group(function () {
         Route::get('/admin/audit-logs', [AuditLogController::class, 'index'])->name('admin.audit-logs.index');
@@ -297,6 +353,17 @@ Route::middleware(['auth', 'company'])->group(function () {
         Route::put('/admin/roles/{role}', [RoleController::class, 'update'])->name('admin.roles.update');
         Route::delete('/admin/roles/{role}', [RoleController::class, 'destroy'])->name('admin.roles.destroy');
     });
+
+    // Support queries to the platform (any authenticated business user)
+    Route::get('/support/queries', [SupportQueryController::class, 'index'])->name('support.queries.index');
+    Route::post('/support/queries', [SupportQueryController::class, 'store'])->name('support.queries.store');
+});
+
+// Platform administration (cross-tenant; platform admins only)
+Route::middleware(['auth', 'platform'])->group(function () {
+    Route::get('/platform/businesses', [PlatformBusinessController::class, 'index'])->name('platform.businesses.index');
+    Route::get('/platform/queries', [PlatformQueryController::class, 'index'])->name('platform.queries.index');
+    Route::patch('/platform/queries/{id}', [PlatformQueryController::class, 'update'])->name('platform.queries.update');
 });
 
 Route::middleware('auth')->group(function () {

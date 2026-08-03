@@ -13,12 +13,17 @@ const props = defineProps({
     customers: Array,
     incomeAccounts: Array,
     moneyAccounts: Array,
+    currencies: Array,
     taxRates: Array,
+    taxGroups: Array,
+    defaultTaxMode: String,
     filters: Object,
 });
 
 const page = usePage();
 const currentCompanyId = computed(() => page.props.auth?.currentCompany?.id);
+const baseCurrency = computed(() => page.props.auth?.currentCompany?.currency ?? 'USD');
+const accountCurrency = (a) => a.currency ?? baseCurrency.value;
 const isSystemAdmin = computed(() => page.props.auth.user?.is_system_admin === true);
 const showCreate = ref(false);
 const payingInvoice = ref(null);
@@ -43,11 +48,15 @@ const form = useForm({
     contact_name: '',
     issue_date: new Date().toISOString().slice(0, 10),
     due_date: '',
+    currency: page.props.auth?.currentCompany?.currency ?? 'USD',
+    exchange_rate: '',
     tax_rate_id: '',
+    tax_group_id: props.taxGroups?.find((group) => group.is_default)?.id ?? '',
+    tax_mode: props.defaultTaxMode ?? 'exclusive',
     notes: '',
     issue: true,
     document: null,
-    items: [{ account_id: '', description: '', quantity: 1, unit_price: '' }],
+    items: [{ account_id: '', description: '', quantity: 1, unit_price: '', tax_group_id: '' }],
 });
 
 // Only one of the two customer fields applies at a time.
@@ -59,28 +68,52 @@ watch(customerMode, (mode) => {
     }
 });
 
-const subtotal = computed(() =>
-    form.items.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_price || 0), 0));
-const taxAmount = computed(() => {
-    const rate = props.taxRates.find((t) => t.id === Number(form.tax_rate_id));
-    return rate ? subtotal.value * (Number(rate.rate) / 100) : 0;
-});
+const groupFor = (item) => props.taxGroups?.find((group) => group.id === Number(item.tax_group_id || form.tax_group_id));
+const calculateLine = (item) => {
+    const entered = Number(item.quantity || 0) * Number(item.unit_price || 0);
+    const rates = [...(groupFor(item)?.rates ?? [])].sort((a, b) => Number(a.pivot?.calculation_order ?? 1) - Number(b.pivot?.calculation_order ?? 1));
+    if (!rates.length) return { net: entered, tax: 0, gross: entered };
+    let multiplier = 1;
+    rates.forEach((rate) => {
+        const fraction = Number(rate.rate) / 100;
+        multiplier = rate.pivot?.is_compound ? multiplier * (1 + fraction) : multiplier + fraction;
+    });
+    const net = form.tax_mode === 'inclusive' ? entered / multiplier : entered;
+    let running = net;
+    let tax = 0;
+    rates.forEach((rate) => {
+        const base = rate.pivot?.is_compound ? running : net;
+        const amount = base * (Number(rate.rate) / 100);
+        tax += amount;
+        running += amount;
+    });
+    return { net, tax, gross: net + tax };
+};
+const subtotal = computed(() => form.items.reduce((sum, item) => sum + calculateLine(item).net, 0));
+const taxAmount = computed(() => form.items.reduce((sum, item) => sum + calculateLine(item).tax, 0));
+const invoiceTotal = computed(() => form.items.reduce((sum, item) => sum + calculateLine(item).gross, 0));
 
 const payForm = useForm({
     date: new Date().toISOString().slice(0, 10),
     amount: '',
+    exchange_rate: '',
     deposit_account_id: '',
     method: 'bank_transfer',
     reference: '',
     document: null,
 });
 
+// Payments settle in the invoice's currency: only offer matching accounts.
+const invoiceCurrency = (invoice) => invoice?.currency ?? baseCurrency.value;
+const depositAccounts = computed(() =>
+    props.moneyAccounts.filter((a) => accountCurrency(a) === invoiceCurrency(payingInvoice.value)));
+
 const openPay = (invoice) => {
     payingInvoice.value = invoice;
     payForm.reset();
     payForm.date = new Date().toISOString().slice(0, 10);
     payForm.amount = (Number(invoice.total) - Number(invoice.amount_paid)).toFixed(2);
-    payForm.deposit_account_id = props.moneyAccounts[0]?.id ?? '';
+    payForm.deposit_account_id = depositAccounts.value[0]?.id ?? '';
 };
 
 const submitCreate = () => {
@@ -147,6 +180,30 @@ const statusBadge = {
     partially_paid: 'bg-amber-100 text-amber-800',
     paid: 'bg-green-100 text-green-800',
     void: 'bg-red-100 text-red-800',
+};
+
+// ZIMRA fiscalisation status, when a fiscal device is active.
+const fiscalStatus = (inv) => {
+    const receipts = (inv.fiscal_receipts ?? []).filter((r) => r.receipt_type === 'FiscalInvoice');
+    if (!receipts.length) return null;
+    if (receipts.some((r) => r.status === 'submitted')) return 'fiscalised';
+    if (receipts.some((r) => r.status === 'invalid')) return 'invalid';
+    if (receipts.some((r) => r.status === 'pending')) return 'pending';
+    return 'failed';
+};
+const fiscalBadge = {
+    fiscalised: 'bg-emerald-100 text-emerald-800',
+    pending: 'bg-amber-100 text-amber-800',
+    invalid: 'bg-red-100 text-red-800',
+    failed: 'bg-red-100 text-red-800',
+};
+const retryFiscalise = (inv) => {
+    router.post(`/income/invoices/${inv.id}/fiscalise`, {}, { preserveScroll: true });
+};
+const creditNote = (inv) => {
+    if (confirm(`Credit-note ${inv.invoice_no}? The invoice is voided in the ledger and a credit note is reported to ZIMRA. This cannot be undone.`)) {
+        router.post(`/income/invoices/${inv.id}/credit-note`, {}, { preserveScroll: true });
+    }
 };
 </script>
 
@@ -220,11 +277,14 @@ const statusBadge = {
                             <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="statusBadge[inv.status]">
                                 {{ inv.status.replace('_', ' ') }}
                             </span>
+                            <span v-if="fiscalStatus(inv)" class="mt-0.5 block w-fit rounded-full px-2 py-0.5 text-[10px] font-medium" :class="fiscalBadge[fiscalStatus(inv)]">
+                                ZIMRA: {{ fiscalStatus(inv) }}
+                            </span>
                         </td>
                         <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="inv.attachments?.[0]" /></td>
-                        <td class="px-4 py-2.5 text-right font-medium">{{ money(inv.total) }}</td>
+                        <td class="px-4 py-2.5 text-right font-medium">{{ money(inv.total, inv.currency) }}</td>
                         <td class="px-4 py-2.5 text-right" :class="Number(inv.total) - Number(inv.amount_paid) > 0 ? 'text-amber-700' : 'text-green-700'">
-                            {{ money(Number(inv.total) - Number(inv.amount_paid)) }}
+                            {{ money(Number(inv.total) - Number(inv.amount_paid), inv.currency) }}
                         </td>
                         <td class="px-4 py-2.5">
                             <div class="flex flex-wrap items-center justify-end gap-2">
@@ -236,6 +296,16 @@ const statusBadge = {
                                     variant="success"
                                     @click="openPay(inv)"
                                 >Record payment</RowAction>
+                                <RowAction
+                                    v-if="can('invoices.manage') && belongsToSelectedCompany(inv) && fiscalStatus(inv) === 'failed'"
+                                    variant="info"
+                                    @click="retryFiscalise(inv)"
+                                >Retry ZIMRA</RowAction>
+                                <RowAction
+                                    v-if="can('invoices.manage') && belongsToSelectedCompany(inv) && fiscalStatus(inv) === 'fiscalised' && Number(inv.amount_paid) === 0 && inv.status !== 'void'"
+                                    variant="danger"
+                                    @click="creditNote(inv)"
+                                >Credit note</RowAction>
                                 <RowAction v-if="isSystemAdmin && belongsToSelectedCompany(inv)" variant="danger" @click="omitTarget = inv">Omit</RowAction>
                             </div>
                         </td>
@@ -339,21 +409,42 @@ const statusBadge = {
                         <input v-model="form.due_date" type="date" class="w-full rounded-md border-gray-300 text-sm" />
                     </div>
                     <div>
-                        <label class="mb-1 block text-sm text-gray-600">Tax</label>
-                        <select v-model="form.tax_rate_id" class="w-full rounded-md border-gray-300 text-sm">
+                        <label class="mb-1 block text-sm text-gray-600">Default tax group</label>
+                        <select v-model="form.tax_group_id" class="w-full rounded-md border-gray-300 text-sm">
                             <option value="">No tax</option>
-                            <option v-for="t in taxRates" :key="t.id" :value="t.id">{{ t.name }}</option>
+                            <option v-for="group in taxGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
                         </select>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Entered prices</label>
+                        <div class="flex h-[38px] rounded-md border border-gray-300 bg-white p-0.5 text-sm">
+                            <button v-for="mode in ['exclusive','inclusive']" :key="mode" type="button" class="flex-1 rounded px-2 capitalize" :class="form.tax_mode === mode ? 'bg-slate-900 text-white' : 'text-slate-600'" @click="form.tax_mode = mode">{{ mode }}</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Currency</label>
+                        <select v-model="form.currency" class="w-full rounded-md border-gray-300 text-sm">
+                            <option v-for="c in currencies ?? [baseCurrency]" :key="c" :value="c">{{ c }}</option>
+                        </select>
+                        <p v-if="form.errors.currency" class="mt-1 text-xs text-red-600">{{ form.errors.currency }}</p>
+                    </div>
+                    <div v-if="form.currency !== baseCurrency">
+                        <label class="mb-1 block text-sm text-gray-600">Rate ({{ form.currency }} per {{ baseCurrency }})</label>
+                        <input v-model="form.exchange_rate" type="number" step="0.000001" min="0.000001"
+                            class="w-full rounded-md border-gray-300 text-sm" placeholder="Auto (day's rate)" />
+                        <p class="mt-1 text-xs text-gray-400">Leave blank to use the day's rate</p>
+                        <p v-if="form.errors.exchange_rate" class="mt-1 text-xs text-red-600">{{ form.errors.exchange_rate }}</p>
                     </div>
                 </div>
 
-                <table class="mt-4 w-full text-sm">
+                <table class="mt-4 hidden w-full text-sm sm:table">
                     <thead class="text-left text-xs uppercase tracking-wide text-gray-400">
                         <tr>
                             <th class="py-2">Income category</th>
                             <th class="py-2">Description</th>
                             <th class="w-20 py-2 text-right">Qty</th>
                             <th class="w-28 py-2 text-right">Unit price</th>
+                            <th class="w-40 py-2">Tax group</th>
                             <th class="w-28 py-2 text-right">Amount</th>
                             <th class="w-8"></th>
                         </tr>
@@ -369,22 +460,34 @@ const statusBadge = {
                             <td class="py-1.5 pr-2"><input v-model="item.description" class="w-full rounded-md border-gray-300 text-sm" required /></td>
                             <td class="py-1.5 pr-2"><input v-model="item.quantity" type="number" step="0.01" min="0.01" class="w-full rounded-md border-gray-300 text-right text-sm" required /></td>
                             <td class="py-1.5 pr-2"><input v-model="item.unit_price" type="number" step="0.01" min="0" class="w-full rounded-md border-gray-300 text-right text-sm" required /></td>
-                            <td class="py-1.5 text-right">{{ money(Number(item.quantity || 0) * Number(item.unit_price || 0)) }}</td>
+                            <td class="py-1.5 pr-2"><select v-model="item.tax_group_id" class="w-full rounded-md border-gray-300 text-sm"><option value="">Invoice default</option><option v-for="group in taxGroups" :key="group.id" :value="group.id">{{ group.name }}</option></select></td>
+                            <td class="py-1.5 text-right"><span class="block">{{ money(calculateLine(item).gross, form.currency) }}</span><span v-if="calculateLine(item).tax" class="text-xs text-gray-400">Tax {{ money(calculateLine(item).tax, form.currency) }}</span></td>
                             <td class="py-1.5 pl-2">
                                 <button v-if="form.items.length > 1" type="button" class="text-red-500" @click="form.items.splice(i, 1)">×</button>
                             </td>
                         </tr>
                     </tbody>
                 </table>
-                <button type="button" class="mt-2 text-sm text-brand-600 hover:underline" @click="form.items.push({ account_id: '', description: '', quantity: 1, unit_price: '' })">
+                <div class="mt-4 space-y-3 sm:hidden">
+                    <div v-for="(item, i) in form.items" :key="`mobile-${i}`" class="rounded-md border border-slate-200 p-3">
+                        <div class="grid gap-3">
+                            <label class="text-xs font-medium uppercase text-slate-500">Income category<select v-model="item.account_id" class="mt-1 block w-full rounded-md border-gray-300 text-sm" required><option value="" disabled>Select category</option><option v-for="a in incomeAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option></select></label>
+                            <label class="text-xs font-medium uppercase text-slate-500">Description<input v-model="item.description" class="mt-1 block w-full rounded-md border-gray-300 text-sm" required /></label>
+                            <div class="grid grid-cols-2 gap-3"><label class="text-xs font-medium uppercase text-slate-500">Quantity<input v-model="item.quantity" type="number" step="0.01" min="0.01" class="mt-1 block w-full rounded-md border-gray-300 text-right text-sm" required /></label><label class="text-xs font-medium uppercase text-slate-500">Unit price<input v-model="item.unit_price" type="number" step="0.01" min="0" class="mt-1 block w-full rounded-md border-gray-300 text-right text-sm" required /></label></div>
+                            <label class="text-xs font-medium uppercase text-slate-500">Tax group<select v-model="item.tax_group_id" class="mt-1 block w-full rounded-md border-gray-300 text-sm"><option value="">Invoice default</option><option v-for="group in taxGroups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label>
+                            <div class="flex items-end justify-between"><div><p class="text-xs uppercase text-slate-500">Line total</p><p class="font-semibold">{{ money(calculateLine(item).gross, form.currency) }}</p><p v-if="calculateLine(item).tax" class="text-xs text-slate-400">Includes tax {{ money(calculateLine(item).tax, form.currency) }}</p></div><button v-if="form.items.length > 1" type="button" class="text-sm text-red-600" @click="form.items.splice(i, 1)">Remove</button></div>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="mt-2 text-sm text-brand-600 hover:underline" @click="form.items.push({ account_id: '', description: '', quantity: 1, unit_price: '', tax_group_id: '' })">
                     + Add line
                 </button>
 
                 <div class="mt-4 flex justify-end">
                     <div class="w-64 space-y-1 text-sm">
-                        <p class="flex justify-between text-gray-600"><span>Subtotal</span><span>{{ money(subtotal) }}</span></p>
-                        <p class="flex justify-between text-gray-600"><span>Tax</span><span>{{ money(taxAmount) }}</span></p>
-                        <p class="flex justify-between border-t pt-1 font-semibold text-gray-800"><span>Total</span><span>{{ money(subtotal + taxAmount) }}</span></p>
+                        <p class="flex justify-between text-gray-600"><span>Subtotal</span><span>{{ money(subtotal, form.currency) }}</span></p>
+                        <p class="flex justify-between text-gray-600"><span>Tax</span><span>{{ money(taxAmount, form.currency) }}</span></p>
+                        <p class="flex justify-between border-t pt-1 font-semibold text-gray-800"><span>Total</span><span>{{ money(invoiceTotal, form.currency) }}</span></p>
                     </div>
                 </div>
 
@@ -435,6 +538,7 @@ const statusBadge = {
                             <th class="py-2">Description</th>
                             <th class="py-2 text-right">Qty</th>
                             <th class="py-2 text-right">Unit price</th>
+                            <th class="py-2">Tax</th>
                             <th class="py-2 text-right">Amount</th>
                         </tr>
                     </thead>
@@ -443,23 +547,29 @@ const statusBadge = {
                             <td class="py-2 pr-2 text-gray-600">{{ item.account ? `${item.account.code} · ${item.account.name}` : '-' }}</td>
                             <td class="py-2 pr-2">{{ item.description }}</td>
                             <td class="py-2 pr-2 text-right">{{ Number(item.quantity) }}</td>
-                            <td class="py-2 pr-2 text-right">{{ money(item.unit_price) }}</td>
-                            <td class="py-2 text-right font-medium">{{ money(item.amount) }}</td>
+                            <td class="py-2 pr-2 text-right">{{ money(item.unit_price, viewingInvoice.currency) }}</td>
+                            <td class="py-2 pr-2 text-xs text-slate-500">{{ item.taxes?.length ? item.taxes.map((tax) => `${tax.tax_name} ${Number(tax.rate).toFixed(2)}%`).join(' + ') : 'No tax' }}</td>
+                            <td class="py-2 text-right font-medium">{{ money(item.amount, viewingInvoice.currency) }}</td>
                         </tr>
                     </tbody>
                 </table>
 
                 <div class="mt-4 flex justify-end">
                     <div class="w-72 space-y-1 text-sm">
-                        <p class="flex justify-between text-gray-600"><span>Subtotal</span><span>{{ money(viewingInvoice.subtotal) }}</span></p>
+                        <p class="flex justify-between text-gray-600"><span>Subtotal</span><span>{{ money(viewingInvoice.subtotal, viewingInvoice.currency) }}</span></p>
                         <p class="flex justify-between text-gray-600">
-                            <span>Tax{{ viewingInvoice.tax_rate ? ` (${viewingInvoice.tax_rate.name})` : '' }}</span>
-                            <span>{{ money(viewingInvoice.tax_amount) }}</span>
+                            <span>Tax{{ viewingInvoice.tax_group ? ` (${viewingInvoice.tax_group.name})` : (viewingInvoice.tax_rate ? ` (${viewingInvoice.tax_rate.name})` : '') }}</span>
+                            <span>{{ money(viewingInvoice.tax_amount, viewingInvoice.currency) }}</span>
                         </p>
-                        <p class="flex justify-between border-t pt-1 font-semibold text-gray-800"><span>Total</span><span>{{ money(viewingInvoice.total) }}</span></p>
-                        <p class="flex justify-between text-gray-600"><span>Paid</span><span>{{ money(viewingInvoice.amount_paid) }}</span></p>
+                        <p class="flex justify-between text-xs text-gray-400"><span>Price treatment</span><span class="capitalize">Tax {{ viewingInvoice.tax_mode ?? 'exclusive' }}</span></p>
+                        <p class="flex justify-between border-t pt-1 font-semibold text-gray-800"><span>Total</span><span>{{ money(viewingInvoice.total, viewingInvoice.currency) }}</span></p>
+                        <p class="flex justify-between text-gray-600"><span>Paid</span><span>{{ money(viewingInvoice.amount_paid, viewingInvoice.currency) }}</span></p>
                         <p class="flex justify-between font-medium" :class="Number(viewingInvoice.total) - Number(viewingInvoice.amount_paid) > 0 ? 'text-amber-700' : 'text-green-700'">
-                            <span>Balance due</span><span>{{ money(Number(viewingInvoice.total) - Number(viewingInvoice.amount_paid)) }}</span>
+                            <span>Balance due</span><span>{{ money(Number(viewingInvoice.total) - Number(viewingInvoice.amount_paid), viewingInvoice.currency) }}</span>
+                        </p>
+                        <p v-if="viewingInvoice.currency && viewingInvoice.currency !== baseCurrency" class="flex justify-between text-xs text-gray-400">
+                            <span>Rate used</span>
+                            <span>{{ viewingInvoice.exchange_rate ? Number(viewingInvoice.exchange_rate).toFixed(4) : 'set at issue' }} · {{ money(viewingInvoice.base_total) }}</span>
                         </p>
                     </div>
                 </div>
@@ -468,7 +578,7 @@ const statusBadge = {
                     <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Payments</h3>
                     <p v-for="p in viewingInvoice.payments" :key="p.id" class="flex justify-between py-0.5 text-sm text-gray-600">
                         <span>{{ fmtDate(p.date) }} · {{ (p.method ?? '').replace('_', ' ') }}<template v-if="p.reference"> · {{ p.reference }}</template></span>
-                        <span class="font-medium">{{ money(p.amount) }}</span>
+                        <span class="font-medium">{{ money(p.amount, p.currency ?? viewingInvoice.currency) }}</span>
                     </p>
                 </div>
 
@@ -487,22 +597,32 @@ const statusBadge = {
         <Modal :show="!!payingInvoice" @close="payingInvoice = null">
             <form v-if="payingInvoice" class="p-6" @submit.prevent="submitPay">
                 <h2 class="mb-1 text-lg font-semibold text-gray-800">Record payment - {{ payingInvoice.invoice_no }}</h2>
-                <p class="mb-4 text-sm text-gray-500">Balance due: {{ money(Number(payingInvoice.total) - Number(payingInvoice.amount_paid)) }}</p>
+                <p class="mb-4 text-sm text-gray-500">Balance due: {{ money(Number(payingInvoice.total) - Number(payingInvoice.amount_paid), payingInvoice.currency) }}</p>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Date</label>
                         <input v-model="payForm.date" type="date" class="w-full rounded-md border-gray-300 text-sm" required />
                     </div>
                     <div>
-                        <label class="mb-1 block text-sm text-gray-600">Amount</label>
+                        <label class="mb-1 block text-sm text-gray-600">Amount ({{ invoiceCurrency(payingInvoice) }})</label>
                         <input v-model="payForm.amount" type="number" step="0.01" min="0.01" class="w-full rounded-md border-gray-300 text-sm" required />
                         <p v-if="payForm.errors.amount" class="mt-1 text-xs text-red-600">{{ payForm.errors.amount }}</p>
                     </div>
                     <div>
-                        <label class="mb-1 block text-sm text-gray-600">Deposit into</label>
+                        <label class="mb-1 block text-sm text-gray-600">Deposit into ({{ invoiceCurrency(payingInvoice) }} account)</label>
                         <select v-model="payForm.deposit_account_id" class="w-full rounded-md border-gray-300 text-sm" required>
-                            <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option>
+                            <option v-for="a in depositAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }} ({{ accountCurrency(a) }})</option>
                         </select>
+                        <p v-if="!depositAccounts.length" class="mt-1 text-xs text-red-600">
+                            No {{ invoiceCurrency(payingInvoice) }} money account yet — add one on the Chart of Accounts.
+                        </p>
+                    </div>
+                    <div v-if="invoiceCurrency(payingInvoice) !== baseCurrency">
+                        <label class="mb-1 block text-sm text-gray-600">Rate ({{ invoiceCurrency(payingInvoice) }} per {{ baseCurrency }})</label>
+                        <input v-model="payForm.exchange_rate" type="number" step="0.000001" min="0.000001"
+                            class="w-full rounded-md border-gray-300 text-sm" placeholder="Auto (day's rate)" />
+                        <p class="mt-1 text-xs text-gray-400">Any move since issue posts a realised exchange gain/loss</p>
+                        <p v-if="payForm.errors.exchange_rate" class="mt-1 text-xs text-red-600">{{ payForm.errors.exchange_rate }}</p>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Method</label>

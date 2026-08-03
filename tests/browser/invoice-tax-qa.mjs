@@ -1,0 +1,30 @@
+import fs from 'node:fs';
+
+const base = process.env.QA_BASE_URL ?? 'http://127.0.0.1:8001';
+const port = process.env.CDP_PORT ?? '9230';
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let version;
+for (let i = 0; i < 40; i++) { try { version = await fetch(`http://127.0.0.1:${port}/json/version`).then((r) => r.json()); break; } catch { await sleep(250); } }
+if (!version) throw new Error('Chrome DevTools endpoint did not start.');
+const target = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(base + '/login')}`, { method: 'PUT' }).then((r) => r.json());
+const ws = new WebSocket(target.webSocketDebuggerUrl);
+await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+let id = 0; const pending = new Map(); const errors = [];
+ws.onmessage = ({ data }) => { const message = JSON.parse(data); if (message.id && pending.has(message.id)) { const p = pending.get(message.id); pending.delete(message.id); message.error ? p.reject(new Error(message.error.message)) : p.resolve(message.result); } if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails.text); if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') errors.push(message.params.entry.text); };
+const send = (method, params = {}) => new Promise((resolve, reject) => { const callId = ++id; pending.set(callId, { resolve, reject }); ws.send(JSON.stringify({ id: callId, method, params })); });
+const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result.value;
+const navigate = async (url) => { await send('Page.navigate', { url }); await sleep(1800); };
+const screenshot = async (name) => { const result = await send('Page.captureScreenshot', { format: 'png', fromSurface: true }); fs.writeFileSync(`tests/browser/${name}.png`, Buffer.from(result.data, 'base64')); };
+const inspect = () => evaluate(`({url:location.href,width:[document.documentElement.clientWidth,document.documentElement.scrollWidth],text:document.body.innerText.slice(0,1000)})`);
+await send('Page.enable'); await send('Runtime.enable'); await send('Log.enable');
+await navigate(base + '/login');
+await evaluate(`(() => { const set=(s,v)=>{const e=document.querySelector(s); const f=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; f.call(e,v); e.dispatchEvent(new Event('input',{bubbles:true}));}; set('input[type=email]','tax-qa@local.test'); set('input[type=password]','Tax-QA-2026!'); document.querySelector('form').requestSubmit(); })()`);
+await sleep(2200);
+await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+await navigate(base + '/taxes/rates'); const rates = await inspect(); await screenshot('tax-groups-desktop');
+await navigate(base + '/income/invoices');
+await evaluate(`([...document.querySelectorAll('button')].find((b)=>b.textContent.toLowerCase().includes('new revenue'))?.click(),true)`); await sleep(500);
+const invoice = await inspect(); await screenshot('invoice-tax-desktop');
+await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await sleep(500);
+const mobile = await inspect(); await screenshot('invoice-tax-mobile');
+console.log(JSON.stringify({ rates, invoice, mobile, errors }, null, 2)); ws.close();

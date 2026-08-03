@@ -25,7 +25,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
             </div>
 
             <p class="relative text-xs text-brand-400">
-                &copy; {{ new Date().getFullYear() }} HoldCo Books. Authorized personnel only.
+                &copy; {{ new Date().getFullYear() }} Toggle. Authorized personnel only.
             </p>
         </div>
 

@@ -463,6 +463,7 @@ class ReportService
         $sign = fn (float $debit, float $credit) => $debitNormal ? $debit - $credit : $credit - $debit;
 
         $opening = 0.0;
+        $currencyOpening = 0.0;
         if ($from) {
             $movement = DB::table('journal_lines as jl')
                 ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
@@ -470,9 +471,11 @@ class ReportService
                 ->whereIn('je.company_id', $companyIds)
                 ->where('jl.account_id', $account->id)
                 ->whereDate('je.date', '<', $from)
-                ->selectRaw('COALESCE(SUM(jl.debit),0) as debit, COALESCE(SUM(jl.credit),0) as credit')
+                ->selectRaw('COALESCE(SUM(jl.debit),0) as debit, COALESCE(SUM(jl.credit),0) as credit,
+                    COALESCE(SUM(jl.currency_debit),0) as currency_debit, COALESCE(SUM(jl.currency_credit),0) as currency_credit')
                 ->first();
             $opening = round($sign((float) $movement->debit, (float) $movement->credit), 2);
+            $currencyOpening = round($sign((float) $movement->currency_debit, (float) $movement->currency_credit), 2);
         }
 
         $lines = DB::table('journal_lines as jl')
@@ -484,7 +487,8 @@ class ReportService
             ->when($to, fn ($q) => $q->whereDate('je.date', '<=', $to))
             ->orderBy('je.date')->orderBy('je.id')->orderBy('jl.id')
             ->select('je.id as entry_id', 'je.date', 'je.entry_no', 'je.description',
-                'je.reference', 'jl.memo', 'jl.debit', 'jl.credit')
+                'je.reference', 'jl.memo', 'jl.debit', 'jl.credit',
+                'jl.currency', 'jl.fx_rate', 'jl.currency_debit', 'jl.currency_credit')
             ->get();
 
         // Counterpart accounts on the same entries: the "particulars"
@@ -499,10 +503,12 @@ class ReportService
             ->map(fn ($rows) => $rows->pluck('name')->unique()->implode(', '));
 
         $running = $opening;
-        $rows = $lines->map(function ($l) use (&$running, $sign, $counterparts) {
+        $currencyRunning = $currencyOpening;
+        $rows = $lines->map(function ($l) use (&$running, &$currencyRunning, $sign, $counterparts) {
             $debit = (float) $l->debit;
             $credit = (float) $l->credit;
             $running = round($running + $sign($debit, $credit), 2);
+            $currencyRunning = round($currencyRunning + $sign((float) $l->currency_debit, (float) $l->currency_credit), 2);
 
             return [
                 'date' => $l->date,
@@ -514,6 +520,11 @@ class ReportService
                 'debit' => $debit,
                 'credit' => $credit,
                 'balance' => $running,
+                'currency' => $l->currency,
+                'fx_rate' => (float) $l->fx_rate,
+                'currency_debit' => (float) $l->currency_debit,
+                'currency_credit' => (float) $l->currency_credit,
+                'currency_balance' => $currencyRunning,
             ];
         })->values();
 
@@ -523,12 +534,19 @@ class ReportService
                 'code' => $account->code,
                 'name' => $account->name,
                 'type' => $account->type,
+                'currency' => $account->currency,
                 'balance_side' => $debitNormal ? 'debit' : 'credit',
             ],
             'opening_balance' => $opening,
             'total_debit' => round($lines->sum('debit'), 2),
             'total_credit' => round($lines->sum('credit'), 2),
             'closing_balance' => $running,
+            // Transaction-currency view: meaningful for accounts that hold
+            // a single (foreign) currency, i.e. money accounts.
+            'currency_opening_balance' => $currencyOpening,
+            'currency_total_debit' => round($lines->sum('currency_debit'), 2),
+            'currency_total_credit' => round($lines->sum('currency_credit'), 2),
+            'currency_closing_balance' => $currencyRunning,
             'rows' => $rows,
         ];
     }

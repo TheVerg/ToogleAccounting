@@ -23,6 +23,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'budgets.view', 'budgets.manage',
         'intercompany.manage',
         'taxes.manage',
+        'compliance.view', 'compliance.manage', 'compliance.review',
         'reports.view',
     ];
 
@@ -56,6 +57,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'equity.view', 'equity.manage',
             'budgets.view', 'budgets.manage',
             'reports.view',
+            'compliance.view', 'compliance.manage',
         ]);
 
         // Viewer: read-only access.
@@ -64,6 +66,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'companies.view', 'accounts.view', 'journals.view', 'contacts.view',
             'invoices.view', 'payments.view', 'expenses.view', 'payroll.view', 'equity.view',
             'budgets.view', 'reports.view',
+            'compliance.view',
         ]);
     }
 }

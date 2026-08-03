@@ -15,11 +15,18 @@ class Payment extends Model
         'from_account_id', 'to_account_id', 'category_account_id',
         'amount', 'method', 'reference', 'description',
         'journal_entry_id', 'created_by',
+        'currency', 'exchange_rate', 'base_amount',
+        'to_amount', 'to_exchange_rate', 'base_to_amount',
     ];
 
     protected $casts = [
         'date' => 'date',
         'amount' => 'decimal:2',
+        'exchange_rate' => 'decimal:6',
+        'base_amount' => 'decimal:2',
+        'to_amount' => 'decimal:2',
+        'to_exchange_rate' => 'decimal:6',
+        'base_to_amount' => 'decimal:2',
     ];
 
     public function company(): BelongsTo

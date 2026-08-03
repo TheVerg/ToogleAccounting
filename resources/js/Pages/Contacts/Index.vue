@@ -45,8 +45,16 @@ const form = useForm({
     email: '',
     phone: '',
     tax_number: '',
+    tin: '',
+    vat_number: '',
+    trade_name: '',
     address: '',
     billing_address: '',
+    province: '',
+    city: '',
+    street: '',
+    house_no: '',
+    district: '',
     is_active: true,
 });
 
@@ -60,8 +68,16 @@ const openEdit = (c) => {
         email: c.email ?? '',
         phone: c.phone ?? '',
         tax_number: c.tax_number ?? '',
+        tin: c.tin ?? '',
+        vat_number: c.vat_number ?? '',
+        trade_name: c.trade_name ?? '',
         address: c.address ?? '',
         billing_address: c.billing_address ?? '',
+        province: c.province ?? '',
+        city: c.city ?? '',
+        street: c.street ?? '',
+        house_no: c.house_no ?? '',
+        district: c.district ?? '',
         is_active: c.is_active,
     });
     showModal.value = true;
@@ -184,6 +200,20 @@ const submitImport = () => {
                         <label class="mb-1 block text-sm text-gray-600">Tax/VAT number</label>
                         <input v-model="form.tax_number" class="w-full rounded-md border-gray-300 text-sm" />
                     </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">ZIMRA TIN</label>
+                        <input v-model="form.tin" inputmode="numeric" maxlength="10" class="w-full rounded-md border-gray-300 text-sm" />
+                        <p v-if="form.errors.tin" class="mt-1 text-xs text-red-600">{{ form.errors.tin }}</p>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">VAT number</label>
+                        <input v-model="form.vat_number" inputmode="numeric" maxlength="9" class="w-full rounded-md border-gray-300 text-sm" />
+                        <p v-if="form.errors.vat_number" class="mt-1 text-xs text-red-600">{{ form.errors.vat_number }}</p>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="mb-1 block text-sm text-gray-600">Registered trade name</label>
+                        <input v-model="form.trade_name" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
                     <div class="sm:col-span-2">
                         <label class="mb-1 block text-sm text-gray-600">Address</label>
                         <textarea v-model="form.address" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
@@ -191,6 +221,26 @@ const submitImport = () => {
                     <div class="sm:col-span-2">
                         <label class="mb-1 block text-sm text-gray-600">Billing address</label>
                         <textarea v-model="form.billing_address" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Province</label>
+                        <input v-model="form.province" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">City</label>
+                        <input v-model="form.city" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">House number</label>
+                        <input v-model="form.house_no" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-gray-600">Street</label>
+                        <input v-model="form.street" class="w-full rounded-md border-gray-300 text-sm" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="mb-1 block text-sm text-gray-600">District</label>
+                        <input v-model="form.district" class="w-full rounded-md border-gray-300 text-sm" />
                     </div>
                     <label v-if="editing" class="flex items-center gap-2 text-sm text-gray-600">
                         <input v-model="form.is_active" type="checkbox" class="rounded border-gray-300 text-brand-600" />

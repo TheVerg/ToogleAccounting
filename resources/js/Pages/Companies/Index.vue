@@ -19,6 +19,25 @@ const isOpen = (id) => !collapsed.value[id];
 const topLevel = computed(() => props.companies.filter((c) => !c.parent_id));
 const childrenOf = (id) => props.companies.filter((c) => c.parent_id === id);
 
+// ZIMRA fiscalisation coverage at a glance: does this company have an
+// active fiscal device, and in which environment?
+const fiscalDevice = (c) => {
+    const devices = c.fiscal_devices ?? [];
+    return devices.find((d) => d.status === 'active' && d.environment === 'production')
+        ?? devices.find((d) => d.status === 'active')
+        ?? null;
+};
+const fiscalLabel = (c) => {
+    const d = fiscalDevice(c);
+    if (!d) return 'ZIMRA: not registered';
+    return d.environment === 'production' ? 'ZIMRA: fiscalised ✓' : 'ZIMRA: test device';
+};
+const fiscalClass = (c) => {
+    const d = fiscalDevice(c);
+    if (!d) return 'bg-slate-100 text-slate-500';
+    return d.environment === 'production' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800';
+};
+
 const form = useForm({
     name: '',
     code: '',
@@ -123,6 +142,7 @@ const destroy = (company) => {
                                 {{ parent.type }}
                             </span>
                             <span v-if="!parent.is_active" class="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] text-slate-500">inactive</span>
+                            <span class="rounded-full px-2 py-0.5 text-[11px] font-medium" :class="fiscalClass(parent)">{{ fiscalLabel(parent) }}</span>
                         </p>
                         <p class="text-xs text-slate-400">
                             <span class="font-mono">{{ parent.code }}</span>
@@ -151,6 +171,7 @@ const destroy = (company) => {
                                 <td class="py-2.5 pl-14 pr-4">
                                     <span class="font-medium text-slate-700">{{ c.name }}</span>
                                     <span class="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{{ c.type }}</span>
+                                    <span class="ml-2 rounded-full px-2 py-0.5 text-[11px] font-medium" :class="fiscalClass(c)">{{ fiscalLabel(c) }}</span>
                                 </td>
                                 <td class="w-24 px-4 py-2.5 font-mono text-xs text-slate-500">{{ c.code }}</td>
                                 <td class="w-20 px-4 py-2.5 text-slate-600">{{ c.currency }}</td>

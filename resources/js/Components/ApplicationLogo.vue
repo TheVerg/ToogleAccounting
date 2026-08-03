@@ -8,12 +8,18 @@ const props = defineProps({
     },
 });
 
-const logoSources = ['/logo.png', '/logo.svg'];
+// Dark surfaces (sidebar, login hero) get the white lockup; light surfaces the navy one.
+const darkSurfaceSizes = ['hero', 'sidebar'];
+const logoSources = computed(() =>
+    darkSurfaceSizes.includes(props.size)
+        ? ['/logo-white.png', '/logo.png', '/logo.svg']
+        : ['/logo.png', '/logo.svg'],
+);
 const sourceIndex = ref(0);
 const logoFailed = ref(false);
 
 const handleLogoError = () => {
-    if (sourceIndex.value < logoSources.length - 1) {
+    if (sourceIndex.value < logoSources.value.length - 1) {
         sourceIndex.value += 1;
         return;
     }
@@ -28,9 +34,7 @@ const sizes = {
     hero: 'h-64 w-[34rem] max-w-full text-xl',
 };
 
-const imageClass = computed(() =>
-    ['hero', 'sidebar'].includes(props.size) ? 'h-full w-full object-cover' : 'h-full w-full object-contain',
-);
+const imageClass = 'h-full w-full object-contain';
 </script>
 
 <template>
@@ -41,10 +45,10 @@ const imageClass = computed(() =>
         <img
             v-if="!logoFailed"
             :src="logoSources[sourceIndex]"
-            alt="Horizon Equity Group logo"
+            alt="Toggle logo"
             :class="imageClass"
             @error="handleLogoError"
         />
-        <span v-else class="flex h-14 w-14 items-center justify-center rounded-xl bg-black">H</span>
+        <span v-else class="flex h-14 w-14 items-center justify-center rounded-xl bg-[#17395E]">T</span>
     </span>
 </template>

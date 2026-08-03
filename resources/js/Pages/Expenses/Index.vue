@@ -40,6 +40,9 @@ const exportForm = reactive({
 const pettyAccounts = computed(() => props.moneyAccounts.filter((a) => a.subtype === 'petty_cash'));
 const fundingAccounts = computed(() => props.moneyAccounts.filter((a) => a.subtype !== 'petty_cash'));
 
+const baseCurrency = computed(() => usePage().props.auth?.currentCompany?.currency ?? 'USD');
+const accountCurrency = (a) => a?.currency ?? baseCurrency.value;
+
 const form = useForm({
     date: new Date().toISOString().slice(0, 10),
     account_id: '',
@@ -205,7 +208,7 @@ const closeExport = () => {
                         <td class="px-4 py-2.5 text-gray-500">{{ e.contact?.name ?? '—' }}</td>
                         <td class="px-4 py-2.5 text-gray-500">{{ e.description ?? '—' }}</td>
                         <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="e.attachments?.[0]" /></td>
-                        <td class="px-4 py-2.5 text-right font-medium text-red-700">{{ money(e.total) }}</td>
+                        <td class="px-4 py-2.5 text-right font-medium text-red-700">{{ money(e.total, e.currency) }}</td>
                         <td v-if="isSystemAdmin" class="px-4 py-2.5 text-right">
                             <RowAction variant="danger" @click="omitTarget = e">Omit</RowAction>
                         </td>
@@ -273,8 +276,11 @@ const closeExport = () => {
                         <input v-model="form.date" type="date" class="w-full rounded-md border-gray-300 text-sm" required />
                     </div>
                     <div>
-                        <label class="mb-1 block text-sm text-gray-600">Amount (before tax)</label>
+                        <label class="mb-1 block text-sm text-gray-600">
+                            Amount (before tax)<template v-if="form.paid_from_account_id"> — {{ accountCurrency(moneyAccounts.find((a) => a.id === Number(form.paid_from_account_id))) }}</template>
+                        </label>
                         <input v-model="form.amount" type="number" step="0.01" min="0.01" class="w-full rounded-md border-gray-300 text-sm" required />
+                        <p v-if="form.errors.date" class="mt-1 text-xs text-red-600">{{ form.errors.date }}</p>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Category</label>
@@ -288,7 +294,7 @@ const closeExport = () => {
                         <select v-model="form.paid_from_account_id" class="w-full rounded-md border-gray-300 text-sm" required>
                             <option value="" disabled>Select…</option>
                             <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">
-                                {{ a.code }} · {{ a.name }}{{ a.subtype === 'petty_cash' ? ' (petty cash)' : '' }}
+                                {{ a.code }} · {{ a.name }} ({{ accountCurrency(a) }}){{ a.subtype === 'petty_cash' ? ' (petty cash)' : '' }}
                             </option>
                         </select>
                     </div>

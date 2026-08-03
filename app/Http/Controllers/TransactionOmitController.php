@@ -24,6 +24,13 @@ class TransactionOmitController extends Controller
 {
     public function invoice(Request $request, Invoice $invoice, TransactionOmitService $service): RedirectResponse
     {
+        // A fiscalised invoice is on ZIMRA's record in a tamper-evident
+        // hash chain; it can only be corrected by a credit note.
+        if ($invoice->fiscalReceipts()->where('status', 'submitted')->exists()) {
+            return back()->with('error',
+                $invoice->invoice_no.' has been fiscalised with ZIMRA and cannot be omitted. Issue a credit note instead.');
+        }
+
         return $this->omit($request, $invoice, $service);
     }
 

@@ -152,13 +152,13 @@ class ReportController extends Controller
         $accounts = Account::where('company_id', $company->id)
             ->where('is_active', true)
             ->orderBy('code')
-            ->get(['id', 'code', 'name', 'type', 'subtype', 'balance_type']);
+            ->get(['id', 'code', 'name', 'type', 'subtype', 'balance_type', 'currency']);
 
         $accountId = (int) $request->query('account', 0);
         $account = ($accountId ? $accounts->firstWhere('id', $accountId) : null) ?? $accounts->first();
 
         return Inertia::render('Reports/GeneralLedger', [
-            'accounts' => $accounts->map->only(['id', 'code', 'name', 'type']),
+            'accounts' => $accounts->map->only(['id', 'code', 'name', 'type', 'currency']),
             'report' => $account
                 ? $this->reports->generalLedger([$company->id], $account, $from, $to)
                 : null,
@@ -183,13 +183,13 @@ class ReportController extends Controller
             ->whereIn('subtype', Account::MONEY_SUBTYPES)
             ->where('is_active', true)
             ->orderBy('code')
-            ->get(['id', 'code', 'name', 'subtype', 'type', 'balance_type']);
+            ->get(['id', 'code', 'name', 'subtype', 'type', 'balance_type', 'currency']);
 
         $accountId = (int) $request->query('account', 0);
         $account = ($accountId ? $moneyAccounts->firstWhere('id', $accountId) : null) ?? $moneyAccounts->first();
 
         return Inertia::render('Reports/CashBook', [
-            'moneyAccounts' => $moneyAccounts->map->only(['id', 'code', 'name', 'subtype']),
+            'moneyAccounts' => $moneyAccounts->map->only(['id', 'code', 'name', 'subtype', 'currency']),
             'report' => $account
                 ? $this->reports->generalLedger([$company->id], $account, $from, $to)
                 : null,

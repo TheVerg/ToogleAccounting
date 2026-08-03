@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Jobs\FiscaliseInvoice;
 use App\Models\Account;
 use App\Models\Company;
 use App\Models\Dividend;
+use App\Models\FiscalDevice;
 use App\Models\DividendAllocation;
 use App\Models\DividendPayment;
 use App\Models\DocumentSequence;
@@ -31,7 +33,20 @@ class AccountingService
     public function __construct(
         protected JournalService $journal,
         protected ChartOfAccountsService $chart,
+        protected ExchangeRateService $fx,
     ) {}
+
+    /** Fetch an account, scoped to the company. */
+    protected function account(Company $company, int $id): Account
+    {
+        return Account::where('company_id', $company->id)->findOrFail($id);
+    }
+
+    /** The transaction-currency columns shared by every line of an entry. */
+    protected function lineFx(string $currency, float $rate): array
+    {
+        return ['currency' => $currency, 'fx_rate' => $rate];
+    }
 
     /** Approve/send an invoice: Dr Accounts Receivable, Cr income (+ Cr Tax Payable). */
     public function issueInvoice(Invoice $invoice, ?int $userId = null): Invoice
@@ -44,29 +59,51 @@ class AccountingService
             $company = $invoice->company;
             $receivable = $this->chart->findBySubtype($company, 'receivable');
 
-            $lines = [[
-                'account_id' => $receivable->id,
-                'debit' => (float) $invoice->total,
-                'credit' => 0,
-                'memo' => 'Invoice '.$invoice->invoice_no,
-            ]];
+            $currency = $invoice->currency ?: $company->currency;
+            $rate = $currency === $company->currency
+                ? 1.0
+                : $this->fx->resolve($company, $currency, $invoice->issue_date->toDateString(), $invoice->exchange_rate);
+            $fx = $this->lineFx($currency, $rate);
 
+            // The ledger records base-currency amounts; base totals are
+            // built from the rounded parts so the entry balances exactly.
+            $baseSubtotal = 0.0;
+            $itemLines = [];
             foreach ($invoice->items as $item) {
-                $lines[] = [
+                $baseItem = $this->fx->toBase((float) $item->amount, $rate);
+                $baseSubtotal = round($baseSubtotal + $baseItem, 2);
+                $itemLines[] = [
                     'account_id' => $item->account_id,
                     'debit' => 0,
-                    'credit' => (float) $item->amount,
+                    'credit' => $baseItem,
                     'memo' => $item->description,
+                    'currency_credit' => (float) $item->amount,
+                    ...$fx,
                 ];
             }
 
+            $baseTax = $this->fx->toBase((float) $invoice->tax_amount, $rate);
+            $baseTotal = round($baseSubtotal + $baseTax, 2);
+
+            $lines = [[
+                'account_id' => $receivable->id,
+                'debit' => $baseTotal,
+                'credit' => 0,
+                'memo' => 'Invoice '.$invoice->invoice_no,
+                'currency_debit' => (float) $invoice->total,
+                ...$fx,
+            ], ...$itemLines];
+
             if ((float) $invoice->tax_amount > 0) {
-                $taxPayable = $this->chart->findBySubtype($company, 'tax');
+                // Tax lives in the currency of trade (ZIMRA requirement).
+                $taxPayable = $this->chart->taxAccountFor($company, $currency);
                 $lines[] = [
                     'account_id' => $taxPayable->id,
                     'debit' => 0,
-                    'credit' => (float) $invoice->tax_amount,
+                    'credit' => $baseTax,
                     'memo' => 'Tax on invoice '.$invoice->invoice_no,
+                    'currency_credit' => (float) $invoice->tax_amount,
+                    ...$fx,
                 ];
             }
 
@@ -80,13 +117,33 @@ class AccountingService
                 $userId,
             );
 
-            $invoice->update(['status' => 'sent', 'journal_entry_id' => $entry->id]);
+            $invoice->update([
+                'status' => 'sent',
+                'journal_entry_id' => $entry->id,
+                'currency' => $currency,
+                'exchange_rate' => $rate,
+                'base_subtotal' => $baseSubtotal,
+                'base_tax_amount' => $baseTax,
+                'base_total' => $baseTotal,
+            ]);
+
+            // Fiscalise at the moment of issue (queued: a ZIMRA outage
+            // never blocks invoicing). No-op when no device is active.
+            if (FiscalDevice::where('company_id', $company->id)->where('status', 'active')->exists()) {
+                FiscaliseInvoice::dispatch($invoice)->afterCommit();
+            }
 
             return $invoice;
         });
     }
 
-    /** Receive money against an invoice: Dr cash/bank, Cr Accounts Receivable. */
+    /**
+     * Receive money against an invoice: Dr cash/bank, Cr Accounts
+     * Receivable. Payments settle in the invoice's currency; when the
+     * rate has moved since issue, the difference between the receivable's
+     * booked base value and the money's base value at the payment-date
+     * rate is posted automatically as a realised exchange gain/loss.
+     */
     public function recordInvoicePayment(Invoice $invoice, array $data, ?int $userId = null): InvoicePayment
     {
         $amount = round((float) $data['amount'], 2);
@@ -106,6 +163,26 @@ class AccountingService
 
             $company = $invoice->company;
             $receivable = $this->chart->findBySubtype($company, 'receivable');
+            $currency = $invoice->currency ?: $company->currency;
+
+            $deposit = $this->account($company, (int) $data['deposit_account_id']);
+            if ($deposit->effectiveCurrency() !== $currency) {
+                throw new InvalidArgumentException(
+                    "This invoice is in {$currency}; deposit the payment into a {$currency} account."
+                );
+            }
+
+            $rate = $this->fx->resolve($company, $currency, $data['date'], $data['exchange_rate'] ?? null);
+            $baseAmount = $this->fx->toBase($amount, $rate);
+
+            // The receivable is relieved at its booked (issue-date) value;
+            // the final payment absorbs any rounding remainder.
+            $paid = round((float) $invoice->amount_paid + $amount, 2);
+            $isFinal = $paid + 0.005 >= (float) $invoice->total;
+            $baseSettled = $isFinal
+                ? round((float) $invoice->base_total - (float) $invoice->base_amount_paid, 2)
+                : round($amount * (float) $invoice->base_total / (float) $invoice->total, 2);
+            $gain = round($baseAmount - $baseSettled, 2);
 
             $payment = $invoice->payments()->create([
                 'date' => $data['date'],
@@ -114,16 +191,36 @@ class AccountingService
                 'method' => $data['method'] ?? null,
                 'reference' => $data['reference'] ?? null,
                 'created_by' => $userId,
+                'currency' => $currency,
+                'exchange_rate' => $rate,
+                'base_amount' => $baseAmount,
+                'fx_gain_loss' => $gain,
             ]);
+
+            $fx = $this->lineFx($currency, $rate);
+            $lines = [
+                ['account_id' => $deposit->id, 'debit' => $baseAmount, 'credit' => 0,
+                    'currency_debit' => $amount, ...$fx],
+                ['account_id' => $receivable->id, 'debit' => 0, 'credit' => $baseSettled,
+                    'currency_credit' => $amount, ...$fx],
+            ];
+            if (abs($gain) >= 0.01) {
+                $fxAccount = $this->chart->fxAccount($company, realised: true);
+                $lines[] = [
+                    'account_id' => $fxAccount->id,
+                    'debit' => $gain < 0 ? -$gain : 0,
+                    'credit' => $gain > 0 ? $gain : 0,
+                    'memo' => 'Realised exchange '.($gain > 0 ? 'gain' : 'loss').' on invoice '.$invoice->invoice_no,
+                    'currency_debit' => 0, 'currency_credit' => 0,
+                    ...$fx,
+                ];
+            }
 
             $entry = $this->journal->post(
                 $company,
                 $data['date'],
                 'Payment received for invoice '.$invoice->invoice_no,
-                [
-                    ['account_id' => (int) $data['deposit_account_id'], 'debit' => $amount, 'credit' => 0],
-                    ['account_id' => $receivable->id, 'debit' => 0, 'credit' => $amount],
-                ],
+                $lines,
                 $payment,
                 $data['reference'] ?? null,
                 $userId,
@@ -131,23 +228,35 @@ class AccountingService
 
             $payment->update(['journal_entry_id' => $entry->id]);
 
-            $paid = round((float) $invoice->amount_paid + $amount, 2);
             $invoice->update([
                 'amount_paid' => $paid,
-                'status' => $paid + 0.005 >= (float) $invoice->total ? 'paid' : 'partially_paid',
+                'base_amount_paid' => round((float) $invoice->base_amount_paid + $baseSettled, 2),
+                'status' => $isFinal ? 'paid' : 'partially_paid',
             ]);
 
             return $payment;
         });
     }
 
-    /** Record an expense: Dr expense (+ Dr Tax Payable for input tax), Cr money account. */
+    /**
+     * Record an expense: Dr expense (+ Dr Tax Payable for input tax),
+     * Cr money account. The expense happens in the currency of the
+     * account it was paid from; the ledger records the base equivalent.
+     */
     public function recordExpense(Company $company, array $data, ?int $userId = null): Expense
     {
         return DB::transaction(function () use ($company, $data, $userId) {
             $amount = round((float) $data['amount'], 2);
             $taxAmount = round((float) ($data['tax_amount'] ?? 0), 2);
             $total = round($amount + $taxAmount, 2);
+
+            $paidFrom = $this->account($company, (int) $data['paid_from_account_id']);
+            $currency = $paidFrom->effectiveCurrency();
+            $rate = $this->fx->resolve($company, $currency, $data['date'], $data['exchange_rate'] ?? null);
+            $baseAmount = $this->fx->toBase($amount, $rate);
+            $baseTax = $this->fx->toBase($taxAmount, $rate);
+            $baseTotal = round($baseAmount + $baseTax, 2);
+            $fx = $this->lineFx($currency, $rate);
 
             $expense = Expense::create([
                 'company_id' => $company->id,
@@ -164,18 +273,25 @@ class AccountingService
                 'is_petty_cash' => (bool) ($data['is_petty_cash'] ?? false),
                 'recurring_expense_id' => $data['recurring_expense_id'] ?? null,
                 'created_by' => $userId,
+                'currency' => $currency,
+                'exchange_rate' => $rate,
+                'base_amount' => $baseAmount,
+                'base_tax_amount' => $baseTax,
+                'base_total' => $baseTotal,
             ]);
 
             $lines = [
-                ['account_id' => (int) $data['account_id'], 'debit' => $amount, 'credit' => 0,
-                    'memo' => $data['description'] ?? null],
+                ['account_id' => (int) $data['account_id'], 'debit' => $baseAmount, 'credit' => 0,
+                    'memo' => $data['description'] ?? null, 'currency_debit' => $amount, ...$fx],
             ];
             if ($taxAmount > 0) {
-                $taxPayable = $this->chart->findBySubtype($company, 'tax');
-                $lines[] = ['account_id' => $taxPayable->id, 'debit' => $taxAmount, 'credit' => 0,
-                    'memo' => 'Input tax'];
+                // Input tax offsets the tax payable of the same currency.
+                $taxPayable = $this->chart->taxAccountFor($company, $currency);
+                $lines[] = ['account_id' => $taxPayable->id, 'debit' => $baseTax, 'credit' => 0,
+                    'memo' => 'Input tax', 'currency_debit' => $taxAmount, ...$fx];
             }
-            $lines[] = ['account_id' => (int) $data['paid_from_account_id'], 'debit' => 0, 'credit' => $total];
+            $lines[] = ['account_id' => $paidFrom->id, 'debit' => 0, 'credit' => $baseTotal,
+                'currency_credit' => $total, ...$fx];
 
             $entry = $this->journal->post(
                 $company,
@@ -193,16 +309,79 @@ class AccountingService
         });
     }
 
-    /** Outgoing payment or money transfer between own accounts. */
+    /**
+     * Outgoing payment or money transfer between own accounts. The
+     * payment happens in the from-account's currency. A transfer between
+     * accounts of different currencies (e.g. converting USD to ZWG at
+     * the bank) needs the amount received on the other side; any
+     * difference in base value is a realised exchange gain/loss.
+     */
     public function recordPayment(Company $company, array $data, ?int $userId = null): Payment
     {
         return DB::transaction(function () use ($company, $data, $userId) {
             $amount = round((float) $data['amount'], 2);
             $kind = $data['kind'];
 
-            $debitAccountId = $kind === 'transfer'
-                ? (int) $data['to_account_id']
-                : (int) $data['category_account_id'];
+            $from = $this->account($company, (int) $data['from_account_id']);
+            $currency = $from->effectiveCurrency();
+            $rate = $this->fx->resolve($company, $currency, $data['date'], $data['exchange_rate'] ?? null);
+            $baseAmount = $this->fx->toBase($amount, $rate);
+            $fx = $this->lineFx($currency, $rate);
+
+            $toAmount = null;
+            $toRate = null;
+            $baseTo = null;
+            $lines = [];
+
+            if ($kind === 'transfer') {
+                $to = $this->account($company, (int) $data['to_account_id']);
+                $toCurrency = $to->effectiveCurrency();
+
+                if ($toCurrency === $currency) {
+                    $lines = [
+                        ['account_id' => $to->id, 'debit' => $baseAmount, 'credit' => 0,
+                            'currency_debit' => $amount, ...$fx],
+                        ['account_id' => $from->id, 'debit' => 0, 'credit' => $baseAmount,
+                            'currency_credit' => $amount, ...$fx],
+                    ];
+                } else {
+                    $toAmount = round((float) ($data['to_amount'] ?? 0), 2);
+                    if ($toAmount <= 0) {
+                        throw new InvalidArgumentException(
+                            "Transferring from a {$currency} account to a {$toCurrency} account needs the amount received in {$toCurrency}."
+                        );
+                    }
+                    $toRate = $this->fx->resolve($company, $toCurrency, $data['date'], $data['to_exchange_rate'] ?? null);
+                    $baseTo = $this->fx->toBase($toAmount, $toRate);
+                    $diff = round($baseAmount - $baseTo, 2); // positive = lost base value on conversion
+
+                    $lines = [
+                        ['account_id' => $to->id, 'debit' => $baseTo, 'credit' => 0,
+                            'currency_debit' => $toAmount, 'currency' => $toCurrency, 'fx_rate' => $toRate],
+                        ['account_id' => $from->id, 'debit' => 0, 'credit' => $baseAmount,
+                            'currency_credit' => $amount, ...$fx],
+                    ];
+                    if (abs($diff) >= 0.01) {
+                        $fxAccount = $this->chart->fxAccount($company, realised: true);
+                        $lines[] = [
+                            'account_id' => $fxAccount->id,
+                            'debit' => $diff > 0 ? $diff : 0,
+                            'credit' => $diff < 0 ? -$diff : 0,
+                            'memo' => 'Realised exchange '.($diff > 0 ? 'loss' : 'gain').' on conversion',
+                            'currency_debit' => 0, 'currency_credit' => 0,
+                            ...$fx,
+                        ];
+                    }
+                }
+            } else {
+                $category = $this->account($company, (int) $data['category_account_id']);
+                $lines = [
+                    ['account_id' => $category->id, 'debit' => $baseAmount, 'credit' => 0,
+                        'currency_debit' => $amount, ...$fx],
+                    ['account_id' => $from->id, 'debit' => 0, 'credit' => $baseAmount,
+                        'currency_credit' => $amount, ...$fx],
+                ];
+            }
 
             $payment = Payment::create([
                 'company_id' => $company->id,
@@ -218,6 +397,12 @@ class AccountingService
                 'reference' => $data['reference'] ?? null,
                 'description' => $data['description'] ?? null,
                 'created_by' => $userId,
+                'currency' => $currency,
+                'exchange_rate' => $rate,
+                'base_amount' => $baseAmount,
+                'to_amount' => $toAmount,
+                'to_exchange_rate' => $toRate,
+                'base_to_amount' => $baseTo,
             ]);
 
             $entry = $this->journal->post(
@@ -225,10 +410,7 @@ class AccountingService
                 $data['date'],
                 ($kind === 'transfer' ? 'Transfer ' : 'Payment ').$payment->payment_no
                     .($data['description'] ?? null ? ' - '.$data['description'] : ''),
-                [
-                    ['account_id' => $debitAccountId, 'debit' => $amount, 'credit' => 0],
-                    ['account_id' => (int) $data['from_account_id'], 'debit' => 0, 'credit' => $amount],
-                ],
+                $lines,
                 $payment,
                 $data['reference'] ?? null,
                 $userId,
@@ -258,6 +440,12 @@ class AccountingService
                 ? $this->chart->findBySubtype($company, 'owner_equity')
                 : $this->chart->findBySubtype($company, 'owner_drawings');
 
+            $moneyAccount = $this->account($company, (int) $data['money_account_id']);
+            $currency = $moneyAccount->effectiveCurrency();
+            $rate = $this->fx->resolve($company, $currency, $data['date'], $data['exchange_rate'] ?? null);
+            $baseAmount = $this->fx->toBase($amount, $rate);
+            $fx = $this->lineFx($currency, $rate);
+
             $tx = EquityTransaction::create([
                 'company_id' => $company->id,
                 'type' => $type,
@@ -268,16 +456,23 @@ class AccountingService
                 'equity_account_id' => $equityAccount->id,
                 'description' => $data['description'] ?? null,
                 'created_by' => $userId,
+                'currency' => $currency,
+                'exchange_rate' => $rate,
+                'base_amount' => $baseAmount,
             ]);
 
             $lines = $type === 'contribution'
                 ? [
-                    ['account_id' => (int) $data['money_account_id'], 'debit' => $amount, 'credit' => 0],
-                    ['account_id' => $equityAccount->id, 'debit' => 0, 'credit' => $amount],
+                    ['account_id' => $moneyAccount->id, 'debit' => $baseAmount, 'credit' => 0,
+                        'currency_debit' => $amount, ...$fx],
+                    ['account_id' => $equityAccount->id, 'debit' => 0, 'credit' => $baseAmount,
+                        'currency_credit' => $amount, ...$fx],
                 ]
                 : [
-                    ['account_id' => $equityAccount->id, 'debit' => $amount, 'credit' => 0],
-                    ['account_id' => (int) $data['money_account_id'], 'debit' => 0, 'credit' => $amount],
+                    ['account_id' => $equityAccount->id, 'debit' => $baseAmount, 'credit' => 0,
+                        'currency_debit' => $amount, ...$fx],
+                    ['account_id' => $moneyAccount->id, 'debit' => 0, 'credit' => $baseAmount,
+                        'currency_credit' => $amount, ...$fx],
                 ];
 
             $entry = $this->journal->post(
@@ -323,6 +518,14 @@ class AccountingService
         $capitalAccount = $this->chart->findBySubtype($company, 'share_capital');
         $premiumAccount = $this->chart->findBySubtype($company, 'share_premium');
 
+        $moneyAccount = $this->account($company, (int) $data['money_account_id']);
+        $currency = $moneyAccount->effectiveCurrency();
+        $rate = $this->fx->resolve($company, $currency, $data['date'], $data['exchange_rate'] ?? null);
+        $baseAmount = $this->fx->toBase($amount, $rate);
+        $baseCapital = $this->fx->toBase($capital, $rate);
+        $basePremium = round($baseAmount - $baseCapital, 2);
+        $fx = $this->lineFx($currency, $rate);
+
         $tx = EquityTransaction::create([
             'company_id' => $company->id,
             'type' => 'share_issue',
@@ -338,14 +541,20 @@ class AccountingService
             'premium_account_id' => $premium > 0 ? $premiumAccount->id : null,
             'description' => $data['description'] ?? null,
             'created_by' => $userId,
+            'currency' => $currency,
+            'exchange_rate' => $rate,
+            'base_amount' => $baseAmount,
         ]);
 
         $lines = [
-            ['account_id' => (int) $data['money_account_id'], 'debit' => $amount, 'credit' => 0],
-            ['account_id' => $capitalAccount->id, 'debit' => 0, 'credit' => $capital, 'memo' => 'Nominal value'],
+            ['account_id' => $moneyAccount->id, 'debit' => $baseAmount, 'credit' => 0,
+                'currency_debit' => $amount, ...$fx],
+            ['account_id' => $capitalAccount->id, 'debit' => 0, 'credit' => $baseCapital,
+                'memo' => 'Nominal value', 'currency_credit' => $capital, ...$fx],
         ];
-        if ($premium > 0) {
-            $lines[] = ['account_id' => $premiumAccount->id, 'debit' => 0, 'credit' => $premium, 'memo' => 'Premium over nominal'];
+        if ($basePremium > 0) {
+            $lines[] = ['account_id' => $premiumAccount->id, 'debit' => 0, 'credit' => $basePremium,
+                'memo' => 'Premium over nominal', 'currency_credit' => $premium, ...$fx];
         }
 
         $shares = $tx->shares_count ? number_format($tx->shares_count).' shares - ' : '';
@@ -383,6 +592,12 @@ class AccountingService
                     ->findOrFail($data['shareholder_id']);
             }
 
+            $moneyAccount = $this->account($company, (int) $data['money_account_id']);
+            $currency = $moneyAccount->effectiveCurrency();
+            $rate = $this->fx->resolve($company, $currency, $data['date'], $data['exchange_rate'] ?? null);
+            $basePrincipal = $this->fx->toBase($principal, $rate);
+            $fx = $this->lineFx($currency, $rate);
+
             $loan = ShareholderLoan::create([
                 'company_id' => $company->id,
                 'loan_no' => DocumentSequence::nextNo($company->id, 'SHL', 'shareholder_loans', 'loan_no'),
@@ -396,6 +611,9 @@ class AccountingService
                 'money_account_id' => $data['money_account_id'],
                 'liability_account_id' => $liabilityAccount->id,
                 'created_by' => $userId,
+                'currency' => $currency,
+                'exchange_rate' => $rate,
+                'base_principal' => $basePrincipal,
             ]);
 
             $entry = $this->journal->post(
@@ -403,8 +621,10 @@ class AccountingService
                 $data['date'],
                 'Shareholder loan '.$loan->loan_no.' from '.$loan->lender_name,
                 [
-                    ['account_id' => (int) $data['money_account_id'], 'debit' => $principal, 'credit' => 0, 'memo' => $loan->loan_no],
-                    ['account_id' => $liabilityAccount->id, 'debit' => 0, 'credit' => $principal, 'memo' => $loan->loan_no],
+                    ['account_id' => $moneyAccount->id, 'debit' => $basePrincipal, 'credit' => 0,
+                        'memo' => $loan->loan_no, 'currency_debit' => $principal, ...$fx],
+                    ['account_id' => $liabilityAccount->id, 'debit' => 0, 'credit' => $basePrincipal,
+                        'memo' => $loan->loan_no, 'currency_credit' => $principal, ...$fx],
                 ],
                 $loan,
                 $loan->loan_no,
@@ -434,6 +654,29 @@ class AccountingService
                 throw new InvalidArgumentException('Repayment amount exceeds the outstanding loan balance.');
             }
 
+            $company = $loan->company;
+            $currency = $loan->currency ?: $company->currency;
+            $moneyAccount = $this->account($company, (int) $data['money_account_id']);
+            if ($moneyAccount->effectiveCurrency() !== $currency) {
+                throw new InvalidArgumentException(
+                    "This loan is in {$currency}; repay it from a {$currency} account."
+                );
+            }
+
+            $rate = $this->fx->resolve($company, $currency, $data['date'], $data['exchange_rate'] ?? null);
+            $baseAmount = $this->fx->toBase($amount, $rate);
+
+            // The liability is relieved at its booked value; the final
+            // repayment absorbs any rounding remainder. Rate movement
+            // since the loan was received is a realised gain/loss.
+            $repaid = round((float) $loan->total_repaid + $amount, 2);
+            $isFinal = $repaid + 0.005 >= (float) $loan->principal;
+            $priorSettled = round((float) $loan->base_principal * (float) $loan->total_repaid / (float) $loan->principal, 2);
+            $baseSettled = $isFinal
+                ? round((float) $loan->base_principal - $priorSettled, 2)
+                : round($amount * (float) $loan->base_principal / (float) $loan->principal, 2);
+            $gain = round($baseSettled - $baseAmount, 2); // owed less base than booked = gain
+
             $repayment = $loan->repayments()->create([
                 'company_id' => $loan->company_id,
                 'date' => $data['date'],
@@ -441,16 +684,35 @@ class AccountingService
                 'reference' => $data['reference'] ?? null,
                 'money_account_id' => $data['money_account_id'],
                 'created_by' => $userId,
+                'exchange_rate' => $rate,
+                'base_amount' => $baseAmount,
+                'fx_gain_loss' => $gain,
             ]);
 
+            $fx = $this->lineFx($currency, $rate);
+            $lines = [
+                ['account_id' => $loan->liability_account_id, 'debit' => $baseSettled, 'credit' => 0,
+                    'memo' => $loan->loan_no, 'currency_debit' => $amount, ...$fx],
+                ['account_id' => $moneyAccount->id, 'debit' => 0, 'credit' => $baseAmount,
+                    'memo' => $loan->loan_no, 'currency_credit' => $amount, ...$fx],
+            ];
+            if (abs($gain) >= 0.01) {
+                $fxAccount = $this->chart->fxAccount($company, realised: true);
+                $lines[] = [
+                    'account_id' => $fxAccount->id,
+                    'debit' => $gain < 0 ? -$gain : 0,
+                    'credit' => $gain > 0 ? $gain : 0,
+                    'memo' => 'Realised exchange '.($gain > 0 ? 'gain' : 'loss').' on loan '.$loan->loan_no,
+                    'currency_debit' => 0, 'currency_credit' => 0,
+                    ...$fx,
+                ];
+            }
+
             $entry = $this->journal->post(
-                $loan->company,
+                $company,
                 $data['date'],
                 'Repayment of shareholder loan '.$loan->loan_no.' to '.$loan->lender_name,
-                [
-                    ['account_id' => $loan->liability_account_id, 'debit' => $amount, 'credit' => 0, 'memo' => $loan->loan_no],
-                    ['account_id' => (int) $data['money_account_id'], 'debit' => 0, 'credit' => $amount, 'memo' => $loan->loan_no],
-                ],
+                $lines,
                 $repayment,
                 $data['reference'] ?? null,
                 $userId,
@@ -502,8 +764,32 @@ class AccountingService
                 if ($debit > 0 && $credit > 0) {
                     throw new InvalidArgumentException('Enter each account balance on one side only (debit or credit).');
                 }
+
+                // Foreign-currency accounts: the balance is entered in the
+                // account's own currency and converted at the cutover-date
+                // rate, so the currency balance carries over correctly.
+                $account = $this->account($company, (int) $line['account_id']);
+                $currency = $account->currency ?: $company->currency;
+                if ($currency !== $company->currency) {
+                    $rate = $this->fx->resolve($company, $currency, $data['date'], $line['exchange_rate'] ?? null);
+                    $lines[] = [
+                        'account_id' => $account->id,
+                        'debit' => $this->fx->toBase($debit, $rate),
+                        'credit' => $this->fx->toBase($credit, $rate),
+                        'memo' => 'Opening balance',
+                        'currency' => $currency,
+                        'fx_rate' => $rate,
+                        'currency_debit' => $debit,
+                        'currency_credit' => $credit,
+                    ];
+                    $debits = round($debits + $this->fx->toBase($debit, $rate), 2);
+                    $credits = round($credits + $this->fx->toBase($credit, $rate), 2);
+
+                    continue;
+                }
+
                 $lines[] = [
-                    'account_id' => (int) $line['account_id'],
+                    'account_id' => $account->id,
                     'debit' => $debit,
                     'credit' => $credit,
                     'memo' => 'Opening balance',
@@ -663,7 +949,16 @@ class AccountingService
             if ($dividend->status === 'reversed') {
                 throw new InvalidArgumentException('This dividend declaration has been reversed.');
             }
-            if ($amount <= 0 || $amount > $allocation->outstanding() + 0.005) {
+
+            // Dividends are declared in base currency but may be paid from
+            // a foreign-currency account; what settles the payable is the
+            // payment's base value at the payment-date rate.
+            $moneyAccount = $this->account($company, (int) $data['money_account_id']);
+            $currency = $moneyAccount->effectiveCurrency();
+            $rate = $this->fx->resolve($company, $currency, $data['date'], $data['exchange_rate'] ?? null);
+            $baseAmount = $this->fx->toBase($amount, $rate);
+
+            if ($amount <= 0 || $baseAmount > $allocation->outstanding() + 0.005) {
                 throw new InvalidArgumentException("Payment exceeds this shareholder's unpaid dividend balance.");
             }
 
@@ -674,16 +969,22 @@ class AccountingService
                 'reference' => $data['reference'] ?? null,
                 'money_account_id' => $data['money_account_id'],
                 'created_by' => $userId,
+                'currency' => $currency,
+                'exchange_rate' => $rate,
+                'base_amount' => $baseAmount,
             ]);
 
+            $fx = $this->lineFx($currency, $rate);
             $payable = $this->chart->findBySubtype($company, 'dividend_payable');
             $entry = $this->journal->post(
                 $company,
                 $data['date'],
                 'Dividend '.$dividend->dividend_no.' paid to '.$allocation->shareholder_name,
                 [
-                    ['account_id' => $payable->id, 'debit' => $amount, 'credit' => 0, 'memo' => $dividend->dividend_no],
-                    ['account_id' => (int) $data['money_account_id'], 'debit' => 0, 'credit' => $amount, 'memo' => $dividend->dividend_no],
+                    ['account_id' => $payable->id, 'debit' => $baseAmount, 'credit' => 0,
+                        'memo' => $dividend->dividend_no, 'currency_debit' => $amount, ...$fx],
+                    ['account_id' => $moneyAccount->id, 'debit' => 0, 'credit' => $baseAmount,
+                        'memo' => $dividend->dividend_no, 'currency_credit' => $amount, ...$fx],
                 ],
                 $payment,
                 $data['reference'] ?? null,
@@ -692,7 +993,7 @@ class AccountingService
 
             $payment->update(['journal_entry_id' => $entry->id]);
 
-            $allocation->update(['paid_amount' => round((float) $allocation->paid_amount + $amount, 2)]);
+            $allocation->update(['paid_amount' => round((float) $allocation->paid_amount + $baseAmount, 2)]);
             $dividend->refreshStatus();
 
             return $payment;
@@ -715,6 +1016,23 @@ class AccountingService
             $amount = round((float) $data['amount'], 2);
             $type = $data['type']; // loan | capital
 
+            // One movement of money, so one currency: both money accounts
+            // must hold it. Each company then books its own base value.
+            $fromAccount = $this->account($from, (int) $data['from_money_account_id']);
+            $toAccount = $this->account($to, (int) $data['to_money_account_id']);
+            $currency = $fromAccount->effectiveCurrency();
+            if ($toAccount->effectiveCurrency() !== $currency) {
+                throw new InvalidArgumentException(
+                    'Both money accounts must hold the same currency for an intercompany transfer '
+                    .'('.$currency.' vs '.$toAccount->effectiveCurrency().').'
+                );
+            }
+
+            $fromRate = $this->fx->resolve($from, $currency, $data['date'], $data['from_exchange_rate'] ?? null);
+            $toRate = $this->fx->resolve($to, $currency, $data['date'], $data['to_exchange_rate'] ?? null);
+            $fromBase = $this->fx->toBase($amount, $fromRate);
+            $toBase = $this->fx->toBase($amount, $toRate);
+
             $transfer = IntercompanyTransfer::create([
                 'from_company_id' => $from->id,
                 'to_company_id' => $to->id,
@@ -725,6 +1043,11 @@ class AccountingService
                 'to_money_account_id' => $data['to_money_account_id'],
                 'description' => $data['description'] ?? null,
                 'created_by' => $userId,
+                'currency' => $currency,
+                'from_exchange_rate' => $fromRate,
+                'to_exchange_rate' => $toRate,
+                'from_base_amount' => $fromBase,
+                'to_base_amount' => $toBase,
             ]);
 
             // Sender's books
@@ -732,13 +1055,16 @@ class AccountingService
                 ? $this->chart->findBySubtype($from, 'intercompany')                // Intercompany Receivable
                 : $this->chart->findBySubtype($from, 'intercompany_investment');    // Investment in Subsidiaries
 
+            $fromFx = $this->lineFx($currency, $fromRate);
             $fromEntry = $this->journal->post(
                 $from,
                 $data['date'],
                 ucfirst($type).' to '.$to->name,
                 [
-                    ['account_id' => $senderAsset->id, 'debit' => $amount, 'credit' => 0],
-                    ['account_id' => (int) $data['from_money_account_id'], 'debit' => 0, 'credit' => $amount],
+                    ['account_id' => $senderAsset->id, 'debit' => $fromBase, 'credit' => 0,
+                        'currency_debit' => $amount, ...$fromFx],
+                    ['account_id' => $fromAccount->id, 'debit' => 0, 'credit' => $fromBase,
+                        'currency_credit' => $amount, ...$fromFx],
                 ],
                 $transfer,
                 null,
@@ -750,13 +1076,16 @@ class AccountingService
                 ? $this->receiverIntercompanyPayable($to)
                 : $this->chart->findBySubtype($to, 'intercompany_capital');
 
+            $toFx = $this->lineFx($currency, $toRate);
             $toEntry = $this->journal->post(
                 $to,
                 $data['date'],
                 ucfirst($type).' received from '.$from->name,
                 [
-                    ['account_id' => (int) $data['to_money_account_id'], 'debit' => $amount, 'credit' => 0],
-                    ['account_id' => $receiverCredit->id, 'debit' => 0, 'credit' => $amount],
+                    ['account_id' => $toAccount->id, 'debit' => $toBase, 'credit' => 0,
+                        'currency_debit' => $amount, ...$toFx],
+                    ['account_id' => $receiverCredit->id, 'debit' => 0, 'credit' => $toBase,
+                        'currency_credit' => $amount, ...$toFx],
                 ],
                 $transfer,
                 null,
@@ -803,8 +1132,12 @@ class AccountingService
                 $reversal = $this->journal->reverse($entry, $date, $userId);
 
                 $paid = round((float) $invoice->amount_paid - (float) $source->amount, 2);
+                // The payment relieved the receivable at its booked value
+                // (base_amount less the realised gain); put that back too.
+                $baseSettled = round((float) $source->base_amount - (float) $source->fx_gain_loss, 2);
                 $invoice->update([
                     'amount_paid' => max($paid, 0),
+                    'base_amount_paid' => max(round((float) $invoice->base_amount_paid - $baseSettled, 2), 0),
                     'status' => $paid < 0.005 ? 'sent' : 'partially_paid',
                 ]);
                 $source->forceFill(['reversed_at' => now()])->save();
@@ -832,8 +1165,9 @@ class AccountingService
 
                 $reversal = $this->journal->reverse($entry, $date, $userId);
 
+                // paid_amount is tracked in base currency.
                 $allocation->update([
-                    'paid_amount' => max(round((float) $allocation->paid_amount - (float) $source->amount, 2), 0),
+                    'paid_amount' => max(round((float) $allocation->paid_amount - (float) $source->base_amount, 2), 0),
                 ]);
                 $allocation->dividend->refreshStatus();
                 $source->forceFill(['reversed_at' => now()])->save();

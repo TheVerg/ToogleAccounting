@@ -14,7 +14,9 @@ class Contact extends Model
 
     protected $fillable = [
         'company_id', 'type', 'name', 'contact_person', 'email', 'phone',
-        'tax_number', 'address', 'billing_address', 'is_active',
+        'tax_number', 'tin', 'vat_number', 'trade_name', 'address',
+        'billing_address', 'province', 'city', 'street', 'house_no', 'district',
+        'is_active',
     ];
 
     protected $casts = [

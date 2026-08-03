@@ -15,6 +15,7 @@ class Expense extends Model
         'paid_from_account_id', 'amount', 'tax_rate_id', 'tax_amount', 'total',
         'description', 'is_petty_cash', 'recurring_expense_id',
         'journal_entry_id', 'created_by',
+        'currency', 'exchange_rate', 'base_amount', 'base_tax_amount', 'base_total',
     ];
 
     protected $casts = [
@@ -23,6 +24,10 @@ class Expense extends Model
         'tax_amount' => 'decimal:2',
         'total' => 'decimal:2',
         'is_petty_cash' => 'boolean',
+        'exchange_rate' => 'decimal:6',
+        'base_amount' => 'decimal:2',
+        'base_tax_amount' => 'decimal:2',
+        'base_total' => 'decimal:2',
     ];
 
     public function company(): BelongsTo

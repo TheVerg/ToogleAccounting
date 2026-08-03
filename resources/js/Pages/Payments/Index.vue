@@ -20,6 +20,8 @@ const showModal = ref(false);
 const showExport = ref(false);
 const omitTarget = ref(null);
 const isSystemAdmin = computed(() => usePage().props.auth.user?.is_system_admin === true);
+const baseCurrency = computed(() => usePage().props.auth?.currentCompany?.currency ?? 'USD');
+const accountCurrency = (a) => a?.currency ?? baseCurrency.value;
 const kindLabel = (kind) => kind === 'transfer' ? 'Account Transfer' : 'Payment';
 const filterState = reactive({
     status: props.filters?.status ?? '',
@@ -37,6 +39,7 @@ const form = useForm({
     kind: 'outgoing',
     date: new Date().toISOString().slice(0, 10),
     amount: '',
+    to_amount: '',
     from_account_id: '',
     to_account_id: '',
     category_account_id: '',
@@ -46,6 +49,16 @@ const form = useForm({
     description: '',
     document: null,
 });
+
+// Transactions through an account are in that account's currency; a
+// transfer between different currencies is a conversion and needs the
+// amount received on the other side.
+const fromCurrency = computed(() =>
+    accountCurrency(props.moneyAccounts.find((a) => a.id === Number(form.from_account_id))));
+const toCurrency = computed(() =>
+    accountCurrency(props.moneyAccounts.find((a) => a.id === Number(form.to_account_id))));
+const isConversion = computed(() =>
+    form.kind === 'transfer' && form.to_account_id && fromCurrency.value !== toCurrency.value);
 
 const submit = () => {
     form.post('/payments', {
@@ -156,7 +169,10 @@ const closeExport = () => {
                         <td class="px-4 py-2.5 text-gray-600">{{ p.kind === 'transfer' ? p.to_account?.name : p.category_account?.name }}</td>
                         <td class="px-4 py-2.5 text-gray-500">{{ p.contact?.name ?? '—' }}</td>
                         <td class="px-4 py-2.5 text-center"><SupportingDocumentLink :attachment="p.attachments?.[0]" /></td>
-                        <td class="px-4 py-2.5 text-right font-medium">{{ money(p.amount) }}</td>
+                        <td class="px-4 py-2.5 text-right font-medium">
+                            {{ money(p.amount, p.currency) }}
+                            <span v-if="p.to_amount" class="block text-xs font-normal text-gray-400">→ {{ money(p.to_amount, p.to_account?.currency ?? baseCurrency) }}</span>
+                        </td>
                         <td v-if="isSystemAdmin" class="px-4 py-2.5 text-right">
                             <RowAction variant="danger" @click="omitTarget = p">Omit</RowAction>
                         </td>
@@ -234,23 +250,29 @@ const closeExport = () => {
                         <input v-model="form.date" type="date" class="w-full rounded-md border-gray-300 text-sm" required />
                     </div>
                     <div>
-                        <label class="mb-1 block text-sm text-gray-600">Amount</label>
+                        <label class="mb-1 block text-sm text-gray-600">Amount<template v-if="form.from_account_id"> ({{ fromCurrency }})</template></label>
                         <input v-model="form.amount" type="number" step="0.01" min="0.01" class="w-full rounded-md border-gray-300 text-sm" required />
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Pay from</label>
                         <select v-model="form.from_account_id" class="w-full rounded-md border-gray-300 text-sm" required>
                             <option value="" disabled>Select…</option>
-                            <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option>
+                            <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }} ({{ accountCurrency(a) }})</option>
                         </select>
                     </div>
                     <div v-if="form.kind === 'transfer'">
                         <label class="mb-1 block text-sm text-gray-600">Transfer to</label>
                         <select v-model="form.to_account_id" class="w-full rounded-md border-gray-300 text-sm" required>
                             <option value="" disabled>Select…</option>
-                            <option v-for="a in moneyAccounts.filter((m) => m.id !== Number(form.from_account_id))" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option>
+                            <option v-for="a in moneyAccounts.filter((m) => m.id !== Number(form.from_account_id))" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }} ({{ accountCurrency(a) }})</option>
                         </select>
                         <p class="mt-1 text-xs text-gray-400">e.g. top up Petty Cash from Bank</p>
+                    </div>
+                    <div v-if="isConversion">
+                        <label class="mb-1 block text-sm text-gray-600">Amount received ({{ toCurrency }})</label>
+                        <input v-model="form.to_amount" type="number" step="0.01" min="0.01" class="w-full rounded-md border-gray-300 text-sm" required />
+                        <p class="mt-1 text-xs text-gray-400">Currency conversion: any difference in value is booked as an exchange gain/loss</p>
+                        <p v-if="form.errors.to_amount" class="mt-1 text-xs text-red-600">{{ form.errors.to_amount }}</p>
                     </div>
                     <div v-else>
                         <label class="mb-1 block text-sm text-gray-600">Category (what for)</label>

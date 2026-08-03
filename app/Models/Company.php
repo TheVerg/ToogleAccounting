@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\Auditable;
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -12,10 +13,10 @@ use Illuminate\Support\Carbon;
 
 class Company extends Model
 {
-    use Auditable, SoftDeletes;
+    use Auditable, BelongsToTenant, SoftDeletes;
 
     protected $fillable = [
-        'name', 'code', 'type', 'parent_id', 'currency', 'email', 'phone', 'address',
+        'name', 'code', 'type', 'parent_id', 'currency', 'default_tax_mode', 'email', 'phone', 'address',
         'tax_number', 'bank_name', 'bank_account_name', 'bank_account_number',
         'bank_branch_code', 'bank_swift_code', 'payment_instructions',
         'is_active', 'locked_before',
@@ -24,6 +25,11 @@ class Company extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'locked_before' => 'date',
+    ];
+
+    /** Mirrors the database default so unsaved/unrefreshed models agree. */
+    protected $attributes = [
+        'currency' => 'USD',
     ];
 
     /** True when the date falls in a closed (locked) period. */
@@ -57,6 +63,13 @@ class Company extends Model
     {
         return $this->hasMany(JournalEntry::class);
     }
+
+    public function fiscalDevices(): HasMany
+    {
+        return $this->hasMany(FiscalDevice::class);
+    }
+
+    public function taxGroups(): HasMany { return $this->hasMany(TaxGroup::class); }
 
     public function isHolding(): bool
     {

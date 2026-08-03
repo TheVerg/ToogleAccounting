@@ -129,8 +129,16 @@ class ContactController extends Controller
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:40'],
             'tax_number' => ['nullable', 'string', 'max:255'],
+            'tin' => ['nullable', 'digits:10'],
+            'vat_number' => ['nullable', 'digits:9'],
+            'trade_name' => ['nullable', 'string', 'max:250'],
             'address' => ['nullable', 'string'],
             'billing_address' => ['nullable', 'string'],
+            'province' => ['nullable', 'string', 'max:100'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'street' => ['nullable', 'string', 'max:100'],
+            'house_no' => ['nullable', 'string', 'max:250'],
+            'district' => ['nullable', 'string', 'max:100'],
             'is_active' => ['boolean'],
         ]);
     }

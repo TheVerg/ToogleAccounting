@@ -14,12 +14,15 @@ class DividendPayment extends Model
     protected $fillable = [
         'company_id', 'dividend_allocation_id', 'date', 'amount', 'reference',
         'money_account_id', 'journal_entry_id', 'created_by',
+        'currency', 'exchange_rate', 'base_amount',
     ];
 
     protected $casts = [
         'date' => 'date',
         'amount' => 'decimal:2',
         'reversed_at' => 'datetime',
+        'exchange_rate' => 'decimal:6',
+        'base_amount' => 'decimal:2',
     ];
 
     public function allocation(): BelongsTo

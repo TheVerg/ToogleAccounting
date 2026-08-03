@@ -14,7 +14,12 @@ class JournalService
     /**
      * Post a balanced journal entry.
      *
-     * @param  array  $lines  Each line: ['account_id' => int, 'debit' => float, 'credit' => float, 'memo' => ?string]
+     * Debit/credit are always in the company's base currency (that is
+     * what keeps the trial balance balancing). Lines may additionally
+     * carry the transaction currency: 'currency', 'fx_rate', and the
+     * transaction-currency amounts 'currency_debit'/'currency_credit'.
+     *
+     * @param  array  $lines  Each line: ['account_id' => int, 'debit' => float, 'credit' => float, 'memo' => ?string, 'currency' => ?string, 'fx_rate' => ?float, 'currency_debit' => ?float, 'currency_credit' => ?float]
      */
     public function post(
         Company $company,
@@ -51,11 +56,18 @@ class JournalService
             ]);
 
             foreach ($lines as $line) {
+                $debit = round((float) ($line['debit'] ?? 0), 2);
+                $credit = round((float) ($line['credit'] ?? 0), 2);
+
                 $entry->lines()->create([
                     'account_id' => $line['account_id'],
-                    'debit' => round((float) ($line['debit'] ?? 0), 2),
-                    'credit' => round((float) ($line['credit'] ?? 0), 2),
+                    'debit' => $debit,
+                    'credit' => $credit,
                     'memo' => $line['memo'] ?? null,
+                    'currency' => $line['currency'] ?? $company->currency,
+                    'fx_rate' => round((float) ($line['fx_rate'] ?? 1), 6),
+                    'currency_debit' => round((float) ($line['currency_debit'] ?? $debit), 2),
+                    'currency_credit' => round((float) ($line['currency_credit'] ?? $credit), 2),
                 ]);
             }
 
@@ -79,6 +91,10 @@ class JournalService
                 'debit' => (float) $l->credit,
                 'credit' => (float) $l->debit,
                 'memo' => $l->memo,
+                'currency' => $l->currency,
+                'fx_rate' => (float) $l->fx_rate,
+                'currency_debit' => (float) $l->currency_credit,
+                'currency_credit' => (float) $l->currency_debit,
             ])->all();
 
             $reversal = $this->post(

@@ -51,6 +51,7 @@ class HandleInertiaRequests extends Middleware
                         'roles' => $user->getRoleNames(),
                         'permissions' => $user->getAllPermissions()->pluck('name'),
                         'is_system_admin' => $user->isSystemAdmin(),
+                        'is_platform_admin' => (bool) $user->is_platform_admin,
                     ] : null,
                     'companies' => $user ? $user->accessibleCompanies()->map(fn ($c) => [
                         'id' => $c->id, 'name' => $c->name, 'code' => $c->code, 'type' => $c->type,

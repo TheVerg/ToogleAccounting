@@ -8,6 +8,7 @@
 .phpactor.json
 .phpunit.result.cache
 /.codex
+/.tmp/
 /.claude/
 /.cursor/
 /.idea
@@ -31,3 +32,4 @@ Thumbs.db
 /ngrok.zip
 /ngrok/
 /backups/
+/tests/browser/*.png

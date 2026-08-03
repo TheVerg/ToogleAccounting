@@ -44,8 +44,8 @@ class Account extends Model
     ];
 
     protected $fillable = [
-        'company_id', 'code', 'name', 'type', 'subtype',
-        'description', 'is_system', 'is_active',
+        'company_id', 'code', 'name', 'type', 'subtype', 'currency',
+        'description', 'is_system', 'is_active', 'default_hs_code',
         'statement', 'statement_group', 'statement_line', 'balance_type',
     ];
 
@@ -87,5 +87,14 @@ class Account extends Model
     {
         return $this->type === 'asset'
             && in_array($this->subtype, self::MONEY_SUBTYPES, true);
+    }
+
+    /**
+     * The currency transactions through this account happen in;
+     * defaults to the company's base currency when not set.
+     */
+    public function effectiveCurrency(): string
+    {
+        return $this->currency ?? $this->company->currency;
     }
 }

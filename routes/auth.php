@@ -8,12 +8,19 @@ use App\Http\Controllers\Auth\ForcedPasswordController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
+use App\Http\Controllers\Auth\TenantRegistrationController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 
-// Self-registration is disabled: users are created by an administrator
-// and assigned roles and companies before they can sign in.
+// Registration creates a whole new ORGANIZATION (tenant + holding
+// company + owner). Staff accounts inside an organization are created
+// by its administrator on the Users screen, never here.
 Route::middleware('guest')->group(function () {
+    Route::get('register', [TenantRegistrationController::class, 'create'])
+        ->name('register');
+    Route::post('register', [TenantRegistrationController::class, 'store'])
+        ->middleware('throttle:6,1');
+
     Route::get('login', [AuthenticatedSessionController::class, 'create'])
         ->name('login');
 

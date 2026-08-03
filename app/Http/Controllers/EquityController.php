@@ -53,7 +53,7 @@ class EquityController extends Controller
             ],
             'moneyAccounts' => Account::where('company_id', $companyId)
                 ->whereIn('subtype', ['cash', 'bank', 'petty_cash'])->where('is_active', true)
-                ->orderBy('code')->get(['id', 'code', 'name']),
+                ->orderBy('code')->get(['id', 'code', 'name', 'currency']),
             'shareholders' => Shareholder::where('company_id', $companyId)
                 ->where('is_active', true)->orderBy('name')->get(['id', 'name']),
         ]);

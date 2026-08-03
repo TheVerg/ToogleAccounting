@@ -17,13 +17,20 @@ class AuditLogController extends Controller
         $user = $request->user();
         $companyIds = $user->accessibleCompanies()->pluck('id')->all();
 
+        // Each tenant reviews only its own activity; within the tenant,
+        // non-admins are further limited to their companies.
+        $tenantFilter = fn ($query) => $query
+            ->when($user->tenant_id, fn ($q) => $q->where('tenant_id', $user->tenant_id));
+
         $actions = AuditLog::query()
+            ->tap($tenantFilter)
             ->when(! $user->isSystemAdmin(), fn ($query) => $query->whereIn('company_id', $companyIds))
             ->distinct()
             ->orderBy('action')
             ->pluck('action');
 
         $subjects = AuditLog::query()
+            ->tap($tenantFilter)
             ->when(! $user->isSystemAdmin(), fn ($query) => $query->whereIn('company_id', $companyIds))
             ->whereNotNull('auditable_type')
             ->distinct()
@@ -41,6 +48,7 @@ class AuditLogController extends Controller
         ]);
 
         $logs = AuditLog::query()
+            ->tap($tenantFilter)
             ->with(['user:id,name,email', 'company:id,name'])
             ->when(! $user->isSystemAdmin(), fn ($query) => $query->whereIn('company_id', $companyIds))
             ->when($filters['action'] ?? null, fn ($query, $action) => $query->where('action', $action))

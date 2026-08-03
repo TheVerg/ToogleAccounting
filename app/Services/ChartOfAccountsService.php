@@ -91,6 +91,12 @@ class ChartOfAccountsService
             'group' => 'Operating Expenses'],
         ['code' => '5950', 'name' => 'Tax Expense', 'type' => 'expense', 'subtype' => 'tax',
             'group' => 'Tax Expense'],
+        // A net gain shows as a negative expense; with ZWG volatility this
+        // is often a business's biggest hidden cost — keep it visible.
+        ['code' => '5960', 'name' => 'Exchange Gains/Losses (Realised)', 'type' => 'expense', 'subtype' => 'fx_realised', 'system' => true,
+            'group' => 'Finance Costs'],
+        ['code' => '5970', 'name' => 'Exchange Gains/Losses (Unrealised)', 'type' => 'expense', 'subtype' => 'fx_unrealised', 'system' => true,
+            'group' => 'Finance Costs'],
     ];
 
     public function seedDefaultChart(Company $company): void
@@ -120,6 +126,14 @@ class ChartOfAccountsService
                 ]);
             }
         }
+
+        // Money accounts and the tax payable account transact in the
+        // company's base currency unless the user says otherwise.
+        Account::where('company_id', $company->id)
+            ->whereNull('currency')
+            ->where(fn ($q) => $q->whereIn('subtype', Account::MONEY_SUBTYPES)
+                ->orWhere(fn ($q) => $q->where('subtype', 'tax')->where('type', 'liability')))
+            ->update(['currency' => $company->currency]);
     }
 
     /**
@@ -219,6 +233,72 @@ class ChartOfAccountsService
                 'is_system' => true,
                 'is_active' => true,
                 'statement_group' => 'Non-current Liabilities',
+            ],
+        );
+    }
+
+    /**
+     * The tax payable account for a currency. ZIMRA expects tax to be
+     * declared and paid in the currency of trade, so each trading
+     * currency gets its own tax payable account, visible on the face of
+     * the balance sheet. The base-currency account is the template's
+     * 2100; other currencies get their own account on first use.
+     */
+    public function taxAccountFor(Company $company, ?string $currency): Account
+    {
+        $currency = $currency ?: $company->currency;
+
+        if ($currency === $company->currency) {
+            $account = $this->findBySubtype($company, 'tax');
+            if ($account->currency === null) {
+                $account->update(['currency' => $currency]);
+            }
+
+            return $account;
+        }
+
+        $existing = Account::where('company_id', $company->id)
+            ->where('subtype', 'tax')->where('type', 'liability')
+            ->where('currency', $currency)
+            ->orderBy('code')
+            ->first();
+        if ($existing) {
+            return $existing;
+        }
+
+        // Allocate the next free code in the 2140+ range.
+        $code = 2140;
+        while (Account::where('company_id', $company->id)->where('code', (string) $code)->exists()) {
+            $code++;
+        }
+
+        return Account::create([
+            'company_id' => $company->id,
+            'code' => (string) $code,
+            'name' => 'Tax Payable — '.$currency,
+            'type' => 'liability',
+            'subtype' => 'tax',
+            'currency' => $currency,
+            'is_system' => true,
+            'is_active' => true,
+            'statement_group' => 'Current Liabilities',
+        ]);
+    }
+
+    /** The realised or unrealised exchange gains/losses account. */
+    public function fxAccount(Company $company, bool $realised = true): Account
+    {
+        $subtype = $realised ? 'fx_realised' : 'fx_unrealised';
+
+        return Account::firstOrCreate(
+            ['company_id' => $company->id, 'code' => $realised ? '5960' : '5970'],
+            [
+                'name' => 'Exchange Gains/Losses ('.($realised ? 'Realised' : 'Unrealised').')',
+                'type' => 'expense',
+                'subtype' => $subtype,
+                'is_system' => true,
+                'is_active' => true,
+                'statement_group' => 'Finance Costs',
             ],
         );
     }

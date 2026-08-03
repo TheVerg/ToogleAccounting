@@ -28,7 +28,8 @@ class OpeningBalanceController extends Controller
             'accounts' => Account::where('company_id', $company->id)
                 ->where('is_active', true)
                 ->orderBy('code')
-                ->get(['id', 'code', 'name', 'type']),
+                ->get(['id', 'code', 'name', 'type', 'currency']),
+            'baseCurrency' => $company->currency,
             'equityAccounts' => Account::where('company_id', $company->id)
                 ->where('type', 'equity')->where('is_active', true)
                 ->orderBy('code')->get(['id', 'code', 'name']),
@@ -56,6 +57,7 @@ class OpeningBalanceController extends Controller
                 Rule::exists('accounts', 'id')->where('company_id', $company->id)],
             'lines.*.debit' => ['nullable', 'numeric', 'min:0'],
             'lines.*.credit' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.exchange_rate' => ['nullable', 'numeric', 'gt:0'],
         ]);
 
         try {

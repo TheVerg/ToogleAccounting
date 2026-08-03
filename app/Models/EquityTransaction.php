@@ -15,6 +15,7 @@ class EquityTransaction extends Model
         'shares_count', 'share_capital_amount', 'share_premium_amount',
         'money_account_id', 'equity_account_id', 'premium_account_id', 'description',
         'journal_entry_id', 'created_by',
+        'currency', 'exchange_rate', 'base_amount',
     ];
 
     protected $casts = [
@@ -23,6 +24,8 @@ class EquityTransaction extends Model
         'shares_count' => 'integer',
         'share_capital_amount' => 'decimal:2',
         'share_premium_amount' => 'decimal:2',
+        'exchange_rate' => 'decimal:6',
+        'base_amount' => 'decimal:2',
     ];
 
     public function company(): BelongsTo

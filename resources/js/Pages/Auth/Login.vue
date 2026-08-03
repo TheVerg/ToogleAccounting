@@ -98,6 +98,13 @@ const submit = () => {
                     Log in
                 </PrimaryButton>
             </div>
+
+            <p class="mt-6 border-t border-slate-100 pt-4 text-center text-sm text-slate-500">
+                New business?
+                <Link :href="route('register')" class="font-medium text-brand-700 underline hover:text-brand-900">
+                    Create your organization
+                </Link>
+            </p>
         </form>
     </GuestLayout>
 </template>

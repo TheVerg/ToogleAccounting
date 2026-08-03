@@ -17,12 +17,22 @@ class AuditLog extends Model
     public const UPDATED_AT = null;
 
     protected $fillable = [
-        'user_id', 'company_id', 'action', 'auditable_type', 'auditable_id', 'changes',
+        'user_id', 'company_id', 'tenant_id', 'action', 'auditable_type', 'auditable_id', 'changes',
     ];
 
     protected $casts = [
         'changes' => 'array',
     ];
+
+    /** Trail rows carry the acting user's tenant so each tenant reviews only its own activity. */
+    protected static function booted(): void
+    {
+        static::creating(function (self $log) {
+            if ($log->tenant_id === null && Auth::hasUser()) {
+                $log->tenant_id = Auth::user()->tenant_id;
+            }
+        });
+    }
 
     public function user(): BelongsTo
     {

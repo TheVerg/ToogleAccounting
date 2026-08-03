@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="HOLDCO logo">
-  <rect width="256" height="256" rx="48" fill="#111111"/>
-  <path fill="#ffffff" d="M74 72h32v43h44V72h32v112h-32v-43h-44v43H74V72z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 535 300" role="img" aria-label="Toggle logo">
+  <g fill="none" stroke="#17395E" stroke-width="32" stroke-linecap="round">
+    <path d="M385 41 H150 A109 109 0 0 0 150 259 H260"/>
+    <circle cx="385" cy="150" r="109"/>
+  </g>
 </svg>

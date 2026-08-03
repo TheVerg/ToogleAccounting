@@ -14,8 +14,10 @@ class Invoice extends Model
 
     protected $fillable = [
         'company_id', 'contact_id', 'invoice_no', 'issue_date', 'due_date',
-        'status', 'subtotal', 'tax_rate_id', 'tax_amount', 'total',
+        'status', 'subtotal', 'tax_mode', 'tax_group_id', 'tax_rate_id', 'tax_amount', 'total',
         'amount_paid', 'notes', 'journal_entry_id', 'created_by',
+        'currency', 'exchange_rate',
+        'base_subtotal', 'base_tax_amount', 'base_total', 'base_amount_paid',
     ];
 
     protected $casts = [
@@ -25,6 +27,11 @@ class Invoice extends Model
         'tax_amount' => 'decimal:2',
         'total' => 'decimal:2',
         'amount_paid' => 'decimal:2',
+        'exchange_rate' => 'decimal:6',
+        'base_subtotal' => 'decimal:2',
+        'base_tax_amount' => 'decimal:2',
+        'base_total' => 'decimal:2',
+        'base_amount_paid' => 'decimal:2',
     ];
 
     public function company(): BelongsTo
@@ -47,10 +54,27 @@ class Invoice extends Model
         return $this->hasMany(InvoicePayment::class);
     }
 
+    public function fiscalReceipts(): HasMany
+    {
+        return $this->hasMany(FiscalReceipt::class);
+    }
+
+    /** The successful FDMS submission for this invoice, if any. */
+    public function fiscalReceipt(): ?FiscalReceipt
+    {
+        return $this->fiscalReceipts
+            ->where('status', 'submitted')
+            ->where('receipt_type', 'FiscalInvoice')
+            ->sortByDesc('id')
+            ->first();
+    }
+
     public function taxRate(): BelongsTo
     {
         return $this->belongsTo(TaxRate::class);
     }
+
+    public function taxGroup(): BelongsTo { return $this->belongsTo(TaxGroup::class); }
 
     public function journalEntry(): BelongsTo
     {

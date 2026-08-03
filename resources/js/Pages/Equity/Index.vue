@@ -200,7 +200,7 @@ const submit = () => {
                         <label class="mb-1 block text-sm text-gray-600">{{ form.type === 'drawing' ? 'Withdraw from' : 'Deposit into' }}</label>
                         <select v-model="form.money_account_id" class="w-full rounded-md border-gray-300 text-sm" required>
                             <option value="" disabled>Select…</option>
-                            <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option>
+                            <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}{{ a.currency ? ` (${a.currency})` : '' }}</option>
                         </select>
                     </div>
                     <template v-if="form.type === 'share_issue'">

@@ -38,7 +38,7 @@ class IntercompanyController extends Controller
                 ->whereIn('subtype', ['cash', 'bank', 'petty_cash'])
                 ->where('is_active', true)
                 ->orderBy('code')
-                ->get(['id', 'company_id', 'code', 'name'])
+                ->get(['id', 'company_id', 'code', 'name', 'currency'])
                 ->groupBy('company_id'),
         ]);
     }

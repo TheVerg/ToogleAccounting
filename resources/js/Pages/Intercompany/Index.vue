@@ -128,14 +128,14 @@ const submit = () => {
                         <label class="mb-1 block text-sm text-gray-600">Sender pays from</label>
                         <select v-model="form.from_money_account_id" class="w-full rounded-md border-gray-300 text-sm" required :disabled="!form.from_company_id">
                             <option value="" disabled>Select…</option>
-                            <option v-for="a in fromAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option>
+                            <option v-for="a in fromAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}{{ a.currency ? ` (${a.currency})` : '' }}</option>
                         </select>
                     </div>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Receiver deposits into</label>
                         <select v-model="form.to_money_account_id" class="w-full rounded-md border-gray-300 text-sm" required :disabled="!form.to_company_id">
                             <option value="" disabled>Select…</option>
-                            <option v-for="a in toAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}</option>
+                            <option v-for="a in toAccounts" :key="a.id" :value="a.id">{{ a.code }} · {{ a.name }}{{ a.currency ? ` (${a.currency})` : '' }}</option>
                         </select>
                     </div>
                     <div>
