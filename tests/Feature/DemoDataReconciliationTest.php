@@ -104,7 +104,7 @@ class DemoDataReconciliationTest extends TestCase
 
     public function test_imported_statement_matches_the_generated_balances(): void
     {
-        $admin = User::where('email', 'admin@horizon-equity.com')->firstOrFail();
+        $admin = User::where('email', 'admin@toggle.com')->firstOrFail();
         setPermissionsTeamId($this->subA->id);
         $admin->forceFill([
             'current_company_id' => $this->subA->id,
@@ -144,7 +144,7 @@ class DemoDataReconciliationTest extends TestCase
 
     public function test_templates_download_with_expected_line_items(): void
     {
-        $admin = User::where('email', 'admin@horizon-equity.com')->firstOrFail();
+        $admin = User::where('email', 'admin@toggle.com')->firstOrFail();
         setPermissionsTeamId($this->subA->id);
         $admin->forceFill([
             'current_company_id' => $this->subA->id,

@@ -34,7 +34,7 @@ class DemoDataSeeder extends Seeder
         $this->call(DatabaseSeeder::class); // clean Horizon company, chart, admin, roles, tax rates
 
         $holding = Company::where('code', 'HOLD')->firstOrFail();
-        $admin = User::where('email', 'admin@horizon-equity.com')->firstOrFail();
+        $admin = User::where('email', DatabaseSeeder::ADMIN_EMAIL)->firstOrFail();
         $subA = Company::firstOrCreate(
             ['code' => 'SUB-A'],
             [

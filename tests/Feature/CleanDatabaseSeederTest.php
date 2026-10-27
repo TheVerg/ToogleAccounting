@@ -22,7 +22,8 @@ class CleanDatabaseSeederTest extends TestCase
         $this->assertSame('Horizon Equity Group', $company->name);
         $this->assertSame('HOLD', $company->code);
         $this->assertSame(1, User::count());
-        $this->assertSame('admin@horizon-equity.com', User::sole()->email);
+        $this->assertSame('admin@toggle.com', User::sole()->email);
+        $this->assertTrue((bool) User::sole()->is_platform_admin);
         $this->assertGreaterThan(0, Account::where('company_id', $company->id)->count());
 
         foreach ([

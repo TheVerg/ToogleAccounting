@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
+    public const ADMIN_EMAIL = 'admin@toggle.com';
+
     public function run(): void
     {
         $this->call(RolesAndPermissionsSeeder::class);
@@ -33,12 +35,12 @@ class DatabaseSeeder extends Seeder
             ['rate' => 0.0, 'is_active' => true],
         );
 
-        $adminEmail = 'admin@horizon-equity.com';
+        $adminEmail = self::ADMIN_EMAIL;
         $admin = User::where('email', $adminEmail)->first()
-            ?? User::where('email', 'admin@holdco.test')->first();
+            ?? User::whereIn('email', ['admin@horizon-equity.com', 'admin@holdco.test'])->first();
 
         if ($admin) {
-            $admin->forceFill(['email' => $adminEmail])->save();
+            $admin->forceFill(['email' => $adminEmail, 'is_platform_admin' => true])->save();
         } else {
             $initialPassword = config('auth.bootstrap_admin_password');
             if (! $initialPassword) {
@@ -51,6 +53,7 @@ class DatabaseSeeder extends Seeder
                 'must_change_password' => true,
                 'current_company_id' => $holding->id,
             ]);
+            $admin->forceFill(['is_platform_admin' => true])->save();
         }
         setPermissionsTeamId($holding->id);
         $admin->unsetRelation('roles')->syncRoles(['system-admin']);
