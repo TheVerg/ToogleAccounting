@@ -7,7 +7,7 @@ use App\Models\ComplianceAdjustment;
 use App\Models\ComplianceDeadline;
 use App\Models\ComplianceReturn;
 use App\Models\ComplianceTask;
-use App\Services\Compliance\ComplianceWorkspaceService;
+use App\Services\Compliance\ComplianceReturnTypeRegistry;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,7 +19,7 @@ use Inertia\Response;
 
 class ComplianceController extends Controller
 {
-    public function index(Request $request, ComplianceWorkspaceService $workspace): Response
+    public function index(Request $request, ComplianceReturnTypeRegistry $registry): Response
     {
         $company = $request->user()->currentCompany;
         $filters = $request->validate([
@@ -36,41 +36,54 @@ class ComplianceController extends Controller
             $to = $selected->period_to->toDateString();
         }
 
+        // A selected return uses its own type's builder; the unselected "live
+        // working papers" view falls back to VAT.
+        $builder = $selected && $registry->has($selected->return_type)
+            ? $registry->for($selected->return_type)
+            : $registry->default();
+
         return Inertia::render('Compliance/Index', [
             'filters' => compact('from', 'to'),
             'workspace' => $selected && ! in_array($selected->status, ['draft'], true) && $selected->snapshot
                 ? $selected->snapshot
-                : $workspace->build($company, $from, $to, $selected),
+                : $builder->build($company, $from, $to, $selected),
             'returns' => ComplianceReturn::where('company_id', $company->id)->latest('period_to')->latest('id')->get(),
             'selectedReturn' => $selected,
             'deadlines' => ComplianceDeadline::where('company_id', $company->id)
                 ->with('assignee:id,name')->orderBy('due_date')->get(),
             'tasks' => ComplianceTask::where('company_id', $company->id)->with('assignee:id,name')->latest()->get(),
             'users' => $company->users()->orderBy('name')->get(['users.id', 'users.name']),
+            'returnTypes' => $registry->keys(),
+            'deadlineTypes' => ComplianceDeadline::TYPES,
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, ComplianceReturnTypeRegistry $registry): RedirectResponse
     {
         $company = $request->user()->currentCompany;
+
+        // The filing deadline's relationship to the period is a property of the
+        // return type. A QPD falls due inside the year it estimates, so a blanket
+        // `after_or_equal:period_to` would make it impossible to record.
+        $type = (string) $request->input('return_type');
+        $workspace = $registry->has($type) ? $registry->for($type) : null;
+        $instalments = $workspace?->instalments() ?? 1;
+
         $data = $request->validate([
-            'return_type' => ['required', Rule::in(['VAT7', 'PAYE-P2', 'QPD', 'ITF12C'])],
+            'return_type' => ['required', Rule::in($registry->keys())],
             'period_from' => ['required', 'date'],
             'period_to' => ['required', 'date', 'after_or_equal:period_from'],
-            'due_date' => ['required', 'date', 'after_or_equal:period_to'],
+            'due_date' => array_filter(['required', 'date',
+                $workspace?->dueDateFollowsPeriod() ? 'after_or_equal:period_to' : null]),
+            'instalment' => $instalments > 1
+                ? ['required', 'integer', 'min:1', 'max:'.$instalments]
+                : ['nullable', 'integer', 'in:0'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+        $data['instalment'] = $instalments > 1 ? (int) $data['instalment'] : 0;
 
-        $existing = ComplianceReturn::query()
-            ->where('company_id', $company->id)
-            ->where('return_type', $data['return_type'])
-            ->whereDate('period_from', $data['period_from'])
-            ->whereDate('period_to', $data['period_to'])
-            ->where('amendment_no', 0)
-            ->first();
-        if ($existing) {
-            return redirect()->route('compliance.index', ['return_id' => $existing->id])
-                ->with('error', 'A '.$data['return_type'].' return already exists for this reporting period. The existing return has been opened.');
+        if ($existing = $this->existingReturn($company->id, $data)) {
+            return $this->openExisting($existing, $data);
         }
 
         try {
@@ -78,22 +91,14 @@ class ComplianceController extends Controller
                 $return = ComplianceReturn::create($data + ['company_id' => $company->id]);
                 $return->events()->create(['action' => 'created', 'to_status' => 'draft', 'user_id' => $request->user()->id]);
                 ComplianceDeadline::updateOrCreate(
-                    ['company_id' => $company->id, 'return_type' => $data['return_type'], 'period_from' => $data['period_from'], 'period_to' => $data['period_to']],
+                    ['company_id' => $company->id, 'return_type' => $data['return_type'], 'period_from' => $data['period_from'],
+                        'period_to' => $data['period_to'], 'instalment' => $data['instalment']],
                     ['due_date' => $data['due_date'], 'compliance_return_id' => $return->id, 'status' => 'open']
                 );
                 return $return;
             });
         } catch (UniqueConstraintViolationException) {
-            $existing = ComplianceReturn::query()
-                ->where('company_id', $company->id)
-                ->where('return_type', $data['return_type'])
-                ->whereDate('period_from', $data['period_from'])
-                ->whereDate('period_to', $data['period_to'])
-                ->where('amendment_no', 0)
-                ->firstOrFail();
-
-            return redirect()->route('compliance.index', ['return_id' => $existing->id])
-                ->with('error', 'A '.$data['return_type'].' return already exists for this reporting period. The existing return has been opened.');
+            return $this->openExisting($this->existingReturn($company->id, $data), $data);
         }
 
         return redirect()->route('compliance.index', ['return_id' => $return->id])->with('success', 'Compliance return workspace created.');
@@ -125,7 +130,7 @@ class ComplianceController extends Controller
         return back()->with('success', 'Adjustment removed.');
     }
 
-    public function transition(Request $request, ComplianceReturn $complianceReturn, ComplianceWorkspaceService $workspace): RedirectResponse
+    public function transition(Request $request, ComplianceReturn $complianceReturn, ComplianceReturnTypeRegistry $registry): RedirectResponse
     {
         $this->authorizeReturn($request, $complianceReturn);
         $data = $request->validate([
@@ -135,6 +140,17 @@ class ComplianceController extends Controller
             'acknowledgement' => ['nullable', 'file', 'max:10240', 'mimes:pdf,png,jpg,jpeg'],
         ]);
         $action = $data['action'];
+
+        // Returns of a type that no longer has a working-paper builder are
+        // read-only: advancing one would sign off VAT workings, lock the period
+        // and archive a VAT evidence pack against the wrong obligation.
+        if (! $complianceReturn->hasWorkspace() && $action !== 'reopen') {
+            return back()->with('error',
+                $complianceReturn->return_type.' has no working papers in this version, so it cannot be prepared, '
+                .'approved or filed. Track it on the compliance calendar and file it directly with ZIMRA.'
+            );
+        }
+
         if (in_array($action, ['review', 'approve', 'file'], true)) {
             abort_unless($request->user()->can('compliance.review'), 403);
         }
@@ -158,6 +174,8 @@ class ComplianceController extends Controller
             }
         }
 
+        $workspace = $registry->for($complianceReturn->return_type);
+
         $snapshot = null;
         if ($action === 'prepare') {
             $snapshot = $workspace->build(
@@ -176,7 +194,10 @@ class ComplianceController extends Controller
             }
         }
 
-        DB::transaction(function () use ($request, $complianceReturn, $action, $next, $data, $snapshot) {
+        // Inside the transaction: the proof of filing and the filed status must
+        // commit together, or a failed upload leaves a return marked filed with
+        // no acknowledgement behind it.
+        DB::transaction(function () use ($request, $complianceReturn, $action, $next, $data, $snapshot, $workspace) {
             $old = $complianceReturn->status;
             $updates = ['status' => $next];
             if ($action === 'prepare') {
@@ -185,9 +206,13 @@ class ComplianceController extends Controller
                 $updates += ['reviewed_by' => $request->user()->id, 'reviewed_at' => now()];
             } elseif ($action === 'approve') {
                 $updates += ['approved_by' => $request->user()->id, 'approved_at' => now()];
-                $lockDate = $complianceReturn->period_to->copy()->addDay();
-                if (! $complianceReturn->company->locked_before || $lockDate->gt($complianceReturn->company->locked_before)) {
-                    $complianceReturn->company->update(['locked_before' => $lockDate]);
+                // Per type: two locking returns for one period would mean whichever
+                // is approved first freezes the other's ability to correct anything.
+                if ($workspace->locksPeriodOnApproval()) {
+                    $lockDate = $complianceReturn->period_to->copy()->addDay();
+                    if (! $complianceReturn->company->locked_before || $lockDate->gt($complianceReturn->company->locked_before)) {
+                        $complianceReturn->company->update(['locked_before' => $lockDate]);
+                    }
                 }
             } elseif ($action === 'file') {
                 $updates += ['filed_by' => $request->user()->id, 'filed_at' => now(), 'filing_reference' => $data['filing_reference']];
@@ -195,10 +220,12 @@ class ComplianceController extends Controller
             }
             $complianceReturn->update($updates);
             $complianceReturn->events()->create(['action' => $action, 'from_status' => $old, 'to_status' => $next, 'comment' => $data['comment'] ?? null, 'user_id' => $request->user()->id]);
+
+            if ($request->hasFile('acknowledgement')) {
+                Attachment::storeFor($complianceReturn, $request->file('acknowledgement'), $complianceReturn->company_id, $request->user()->id);
+            }
         });
-        if ($request->hasFile('acknowledgement')) {
-            Attachment::storeFor($complianceReturn, $request->file('acknowledgement'), $complianceReturn->company_id, $request->user()->id);
-        }
+
         return back()->with('success', 'Return moved to '.$next.'.');
     }
 
@@ -206,12 +233,19 @@ class ComplianceController extends Controller
     {
         $company = $request->user()->currentCompany;
         $data = $request->validate([
-            'return_type' => ['required', 'string', 'max:20'], 'period_from' => ['required', 'date'],
+            // Constrained, not free text: a "QPD1" deadline would never reconcile
+            // against a "QPD" return or roll up on the accountant dashboard.
+            'return_type' => ['required', Rule::in(ComplianceDeadline::TYPES)], 'period_from' => ['required', 'date'],
             'period_to' => ['required', 'date', 'after_or_equal:period_from'], 'due_date' => ['required', 'date'],
+            // Deliberately no `after_or_equal:period_to`: a QPD falls due inside
+            // the year it estimates.
+            'instalment' => ['nullable', 'integer', 'min:0', 'max:4'],
             'assigned_to' => ['nullable', 'integer', Rule::exists('company_user', 'user_id')->where('company_id', $company->id)],
         ]);
+        $data['instalment'] = (int) ($data['instalment'] ?? 0);
         ComplianceDeadline::updateOrCreate(
-            ['company_id' => $company->id, 'return_type' => strtoupper($data['return_type']), 'period_from' => $data['period_from'], 'period_to' => $data['period_to']],
+            ['company_id' => $company->id, 'return_type' => $data['return_type'], 'period_from' => $data['period_from'],
+                'period_to' => $data['period_to'], 'instalment' => $data['instalment']],
             $data + ['company_id' => $company->id]
         );
         return back()->with('success', 'Compliance deadline saved.');
@@ -227,10 +261,12 @@ class ComplianceController extends Controller
             $next = ComplianceReturn::where('company_id', $complianceReturn->company_id)
                 ->where('return_type', $complianceReturn->return_type)
                 ->whereDate('period_from', $complianceReturn->period_from)
-                ->whereDate('period_to', $complianceReturn->period_to)->max('amendment_no') + 1;
+                ->whereDate('period_to', $complianceReturn->period_to)
+                ->where('instalment', $complianceReturn->instalment)->max('amendment_no') + 1;
             $amendment = ComplianceReturn::create([
                 'company_id' => $complianceReturn->company_id, 'return_type' => $complianceReturn->return_type,
                 'period_from' => $complianceReturn->period_from, 'period_to' => $complianceReturn->period_to,
+                'instalment' => $complianceReturn->instalment,
                 'due_date' => now()->addDays(7), 'status' => 'draft', 'amendment_no' => $next,
                 'amends_return_id' => $complianceReturn->id, 'notes' => 'Amendment to return #'.$complianceReturn->id,
             ]);
@@ -267,5 +303,27 @@ class ComplianceController extends Controller
     protected function authorizeReturn(Request $request, ComplianceReturn $return): void
     {
         abort_unless($return->company_id === $request->user()->current_company_id, 403);
+    }
+
+    /** The original (non-amendment) return for this type, period and instalment. */
+    protected function existingReturn(int $companyId, array $data): ?ComplianceReturn
+    {
+        return ComplianceReturn::query()
+            ->where('company_id', $companyId)
+            ->where('return_type', $data['return_type'])
+            ->whereDate('period_from', $data['period_from'])
+            ->whereDate('period_to', $data['period_to'])
+            ->where('instalment', $data['instalment'])
+            ->where('amendment_no', 0)
+            ->first();
+    }
+
+    protected function openExisting(?ComplianceReturn $existing, array $data): RedirectResponse
+    {
+        abort_unless($existing !== null, 409, 'This return already exists but could not be opened.');
+        $label = $data['return_type'].($data['instalment'] ? ' instalment '.$data['instalment'] : '');
+
+        return redirect()->route('compliance.index', ['return_id' => $existing->id])
+            ->with('error', 'A '.$label.' return already exists for this reporting period. The existing return has been opened.');
     }
 }

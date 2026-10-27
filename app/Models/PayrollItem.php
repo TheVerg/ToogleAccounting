@@ -12,8 +12,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PayrollItem extends Model
 {
     protected $fillable = [
-        'payroll_run_id', 'employee_id', 'employee_name', 'job_title',
-        'basic', 'earnings_total', 'deductions_total', 'gross', 'net', 'lines',
+        'payroll_run_id', 'employee_id', 'employee_name', 'job_title', 'currency',
+        'basic', 'earnings_total', 'deductions_total', 'gross', 'net', 'employer_costs_total', 'lines',
     ];
 
     protected $casts = [
@@ -22,6 +22,7 @@ class PayrollItem extends Model
         'deductions_total' => 'decimal:2',
         'gross' => 'decimal:2',
         'net' => 'decimal:2',
+        'employer_costs_total' => 'decimal:2',
         'lines' => 'array',
     ];
 

@@ -31,9 +31,11 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PeriodLockController;
 use App\Http\Controllers\PaymentExportController;
 use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\PayrollStatutoryController;
 use App\Http\Controllers\Platform\BusinessController as PlatformBusinessController;
 use App\Http\Controllers\Platform\QueryController as PlatformQueryController;
 use App\Http\Controllers\PayrollPayslipController;
+use App\Http\Controllers\PayrollRemittanceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RatioBenchmarkController;
 use App\Http\Controllers\RecurringExpenseController;
@@ -170,6 +172,10 @@ Route::middleware(['auth', 'company'])->group(function () {
         ->middleware('permission:payroll.view')->name('payroll.show');
     Route::get('/payroll/{payrollRun}/items/{payrollItem}/payslip', PayrollPayslipController::class)
         ->middleware('permission:payroll.view')->name('payroll.items.payslip');
+    Route::get('/payroll/{payrollRun}/paye-p2', [PayrollRemittanceController::class, 'paye'])
+        ->middleware('permission:payroll.view')->name('payroll.paye-p2');
+    Route::get('/payroll/{payrollRun}/nssa', [PayrollRemittanceController::class, 'nssa'])
+        ->middleware('permission:payroll.view')->name('payroll.nssa');
     Route::middleware('permission:payroll.manage')->group(function () {
         Route::post('/payroll', [PayrollController::class, 'store'])->name('payroll.store');
         Route::post('/payroll/{payrollRun}/approve', [PayrollController::class, 'approve'])->name('payroll.approve');
@@ -243,6 +249,14 @@ Route::middleware(['auth', 'company'])->group(function () {
         ->middleware('permission:accounts.manage')->name('settings.exchange-rates.fetch');
     Route::delete('/settings/exchange-rates/{exchangeRate}', [ExchangeRateController::class, 'destroy'])
         ->middleware('permission:accounts.manage')->name('settings.exchange-rates.destroy');
+
+    Route::middleware('permission:payroll.manage')->prefix('settings/payroll-statutory')->group(function () {
+        Route::get('/', [PayrollStatutoryController::class, 'index'])->name('settings.payroll-statutory.index');
+        Route::post('/bands', [PayrollStatutoryController::class, 'storeBand'])->name('settings.payroll-statutory.bands.store');
+        Route::post('/rates', [PayrollStatutoryController::class, 'storeRate'])->name('settings.payroll-statutory.rates.store');
+        Route::delete('/bands/{band}', [PayrollStatutoryController::class, 'destroyBand'])->name('settings.payroll-statutory.bands.destroy');
+        Route::delete('/rates/{rate}', [PayrollStatutoryController::class, 'destroyRate'])->name('settings.payroll-statutory.rates.destroy');
+    });
 
     // Tax rates
     Route::get('/taxes/rates', [TaxRateController::class, 'index'])
@@ -333,6 +347,8 @@ Route::middleware(['auth', 'company'])->group(function () {
     Route::post('/settings/fiscalisation/day/open', [FiscalDayController::class, 'open'])->name('settings.fiscalisation.day.open');
     Route::post('/settings/fiscalisation/day/close', [FiscalDayController::class, 'close'])->name('settings.fiscalisation.day.close');
     Route::post('/settings/fiscalisation/day/sync', [FiscalDayController::class, 'sync'])->name('settings.fiscalisation.day.sync');
+    Route::post('/settings/fiscalisation/receipts/{fiscalReceipt}/acknowledge', [FiscalDeviceController::class, 'acknowledgeReceipt'])
+        ->name('settings.fiscalisation.receipts.acknowledge');
     Route::post('/income/invoices/{invoice}/fiscalise', [FiscalDayController::class, 'retry'])
         ->middleware('permission:invoices.manage')->name('invoices.fiscalise.retry');
 

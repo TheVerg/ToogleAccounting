@@ -14,8 +14,8 @@ class PayrollRun extends Model
 
     protected $fillable = [
         'company_id', 'reference', 'period_from', 'period_to', 'pay_date',
-        'money_account_id', 'status', 'total_gross', 'total_deductions', 'total_net',
-        'notes', 'journal_entry_id', 'created_by', 'approved_by', 'approved_at', 'deleted_by',
+        'money_account_id', 'currency', 'exchange_rate', 'status', 'total_gross', 'total_deductions', 'total_net',
+        'total_employer_costs', 'notes', 'compliance_warnings', 'journal_entry_id', 'created_by', 'approved_by', 'approved_at', 'deleted_by',
     ];
 
     protected $casts = [
@@ -25,6 +25,9 @@ class PayrollRun extends Model
         'total_gross' => 'decimal:2',
         'total_deductions' => 'decimal:2',
         'total_net' => 'decimal:2',
+        'total_employer_costs' => 'decimal:2',
+        'exchange_rate' => 'decimal:6',
+        'compliance_warnings' => 'array',
         'approved_at' => 'datetime',
     ];
 

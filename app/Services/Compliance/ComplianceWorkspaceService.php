@@ -14,16 +14,20 @@ class ComplianceWorkspaceService
 {
     public function build(Company $company, string $from, string $to, ?ComplianceReturn $return = null): array
     {
+        // Explicit day boundaries throughout: SQLite stores date columns as
+        // "Y-m-d 00:00:00", so a bare "Y-m-d" upper bound silently drops
+        // everything dated on the last day of the period. MariaDB truncates to
+        // a real DATE and is unaffected, but the two must not disagree.
         $invoices = Invoice::query()
             ->where('company_id', $company->id)
-            ->whereBetween('issue_date', [$from, $to])
+            ->whereBetween('issue_date', [$from.' 00:00:00', $to.' 23:59:59'])
             ->whereNot('status', 'draft')
             ->with(['taxRate', 'items.taxes', 'fiscalReceipts'])
             ->orderBy('issue_date')->get();
 
         $expenses = Expense::query()
             ->where('company_id', $company->id)
-            ->whereBetween('date', [$from, $to])
+            ->whereBetween('date', [$from.' 00:00:00', $to.' 23:59:59'])
             ->with(['taxRate', 'contact', 'attachments'])
             ->orderBy('date')->get();
 
@@ -71,7 +75,7 @@ class ComplianceWorkspaceService
         $ledgerRevenue = round((float) DB::table('journal_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->join('accounts as a', 'a.id', '=', 'jl.account_id')
-            ->where('je.company_id', $company->id)->whereBetween('je.date', [$from, $to])
+            ->where('je.company_id', $company->id)->whereBetween('je.date', [$from.' 00:00:00', $to.' 23:59:59'])
             ->whereIn('je.status', ['posted', 'reversed'])->where('a.type', 'income')
             ->sum(DB::raw('jl.credit - jl.debit')), 2);
         $ledgerDifference = round($ledgerRevenue - $invoiceBase, 2);

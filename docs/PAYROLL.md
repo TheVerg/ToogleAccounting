@@ -1,6 +1,6 @@
 # Payroll Statutory Engine (PAYE / NSSA / QPDs)
 
-Status: **planned — not yet started**
+Status: **statutory core built (2026-08-05); regulatory data approval and advanced items remain**
 Depends on: **multi-currency Phase A** (tax tables are currency-keyed; split-currency
 salaries need the FX foundation) — see [MULTICURRENCY.md](MULTICURRENCY.md)
 Sequence: multi-currency A → fiscalisation 1–2 ([FISCALISATION.md](FISCALISATION.md)) →
@@ -15,9 +15,47 @@ adjustments at approval, payslip PDFs, and proper ledger posting via
 `PayrollService` (Dr Salaries & Wages gross; Cr Tax Payable / Pension Payable /
 Payroll Deductions Payable / Employee Loans; Cr bank for net).
 
-**What's missing is the statutory brain:** PAYE and pension today are just
-hand-typed deduction lines. No tax tables, no NSSA rules, no AIDS levy, no employer
-contributions, no currency handling anywhere in payroll.
+The statutory core now includes effective-dated, source-linked and approval-gated
+PAYE bands and statutory rates; employee tax/NSSA profiles; automatic PAYE, AIDS
+levy, NSSA POBS and APWCS lines; employer-cost ledger posting; compliance warnings;
+and PAYE P2/NSSA CSV schedules. Configure reviewed current rules under Settings →
+Payroll Rules. No unapproved or out-of-period rule is ever used silently.
+
+**Which rule applies (2026-08-09).** Several tables can match one pay date, because
+a superseded table is not required to carry an `effective_to`. Exactly one is
+selected, never summed: a tenant's own table beats the shared national table, then
+the latest `effective_from` beats earlier ones. Bands *within* one table are
+validated not to overlap on save. Rules follow the exchange-rate tenancy pattern —
+shared rows (`tenant_id` null) are read-only reference data; a tenant may publish
+and delete only its own overrides. Both tables are `Auditable`.
+
+**PAYE base (2026-08-09).** PAYE is charged on remuneration net of the employee
+NSSA POBS contribution, so NSSA is resolved before the tax table is applied.
+
+**Table form (2026-08-09).** ZIMRA's published tables use "income × rate −
+deduction" per bracket. Enter them verbatim: a band carrying a non-zero
+`deduction` switches the whole table to that single-bracket formula, which is
+never summed across brackets. A table with all deductions at 0 is treated as a
+marginal table and summed. Both forms agree for a correctly transcribed table —
+`StatutoryPayrollTest` asserts this across a range of incomes.
+
+**Currency (2026-08-09).** Payroll computes and posts in the company base
+currency only. Selecting a money account that transacts in another currency is
+refused at generation *and* at posting rather than silently converted at 1:1;
+journal lines state their currency and rate explicitly. `employees.pay_currency`
+is therefore not exposed in the UI, and `payroll_runs.exchange_rate` stays at 1 —
+both columns are reserved for the mixed-currency work below.
+
+The rates table also carries the **corporate income tax rate** (code
+`corporate_tax`, in the `rate` column for codes with no employee/employer split),
+which the QPD estimator reads under the same approval gate — see
+[COMPLIANCE.md](COMPLIANCE.md).
+
+Still outstanding: independently verified current ZIMRA/NSSA production rates,
+mixed-currency salary apportionment (per-employee pay currency, FX-aware
+posting), remaining tax credits and allowable deductions (medical aid, approved
+pension contributions, elderly/disability credits), ZIMDEF/NEC rule
+configuration, and direct TaRMS/NSSA submission (not attempted).
 
 Key files: `app/Services/PayrollService.php`, `app/Http/Controllers/PayrollController.php`,
 `app/Models/{Employee,SalaryComponent,PayrollRun,PayrollItem,EmployeeLoan}.php`,

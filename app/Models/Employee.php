@@ -19,7 +19,8 @@ class Employee extends Model
 
     protected $fillable = [
         'company_id', 'user_id', 'employee_no', 'first_name', 'last_name', 'email', 'phone',
-        'national_id', 'address', 'job_title', 'department', 'contract_type', 'pay_frequency',
+        'national_id', 'tax_number', 'nssa_number', 'nssa_registered', 'pay_currency',
+        'address', 'job_title', 'department', 'contract_type', 'pay_frequency',
         'start_date', 'end_date', 'base_salary', 'payment_account_id', 'is_active',
         'created_by', 'deleted_by',
     ];
@@ -29,6 +30,7 @@ class Employee extends Model
         'end_date' => 'date',
         'base_salary' => 'decimal:2',
         'is_active' => 'boolean',
+        'nssa_registered' => 'boolean',
     ];
 
     public function company(): BelongsTo

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\FiscalDevice;
 use App\Models\FiscalReceipt;
 use App\Services\Fdms\DeviceRegistrationService;
@@ -48,10 +49,11 @@ class FiscalDeviceController extends Controller
             ] : null,
             'recentReceipts' => $device
                 ? FiscalReceipt::where('fiscal_device_id', $device->id)
-                    ->with('invoice:id,invoice_no')
+                    ->with(['invoice:id,invoice_no', 'acknowledgedBy:id,name'])
                     ->latest('id')->limit(25)
                     ->get(['id', 'invoice_id', 'receipt_type', 'currency', 'receipt_counter',
-                        'receipt_global_no', 'invoice_no', 'receipt_date', 'total', 'status', 'error', 'verification_url'])
+                        'receipt_global_no', 'invoice_no', 'receipt_date', 'total', 'status', 'error', 'verification_url',
+                        'alert_acknowledged_at', 'alert_acknowledged_by', 'alert_acknowledged_note'])
                 : [],
         ]);
     }
@@ -91,5 +93,36 @@ class FiscalDeviceController extends Controller
         return back()->with('success',
             'Fiscal device '.$device->device_id.' registered for '
             .($device->config['taxPayerName'] ?? $company->name).'. Invoices will now be fiscalised.');
+    }
+
+    /**
+     * Sign off a failed/invalid receipt so `fdms:monitor` stops alerting on it.
+     * This records the decision; it does not alter the receipt or the hash chain,
+     * and a later retry that succeeds clears the failure state on its own.
+     */
+    public function acknowledgeReceipt(Request $request, FiscalReceipt $fiscalReceipt): RedirectResponse
+    {
+        abort_unless($request->user()->isSystemAdmin(), 403);
+        abort_unless(
+            $fiscalReceipt->device?->company_id === $request->user()->current_company_id,
+            403,
+        );
+        abort_unless(in_array($fiscalReceipt->status, ['failed', 'invalid'], true), 422,
+            'Only failed or invalid receipts can be acknowledged.');
+
+        $data = $request->validate(['note' => ['required', 'string', 'max:255']]);
+
+        $fiscalReceipt->update([
+            'alert_acknowledged_at' => now(),
+            'alert_acknowledged_by' => $request->user()->id,
+            'alert_acknowledged_note' => $data['note'],
+        ]);
+
+        // FiscalReceipt carries no company_id of its own — it hangs off the device.
+        AuditLog::record('fiscal_receipt_alert_acknowledged', $fiscalReceipt, [
+            'note' => ['old' => null, 'new' => $data['note']],
+        ], $fiscalReceipt->device->company_id);
+
+        return back()->with('success', "Receipt {$fiscalReceipt->receipt_global_no} acknowledged — it will no longer raise alerts.");
     }
 }

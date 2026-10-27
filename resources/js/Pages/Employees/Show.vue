@@ -63,6 +63,11 @@ const editForm = useForm({
     email: props.employee.email ?? '',
     phone: props.employee.phone ?? '',
     national_id: props.employee.national_id ?? '',
+    tax_number: props.employee.tax_number ?? '',
+    nssa_number: props.employee.nssa_number ?? '',
+    nssa_registered: props.employee.nssa_registered ?? false,
+    // pay_currency is intentionally not editable: payroll computes and posts in
+    // the company base currency only, so exposing it would promise nothing.
     address: props.employee.address ?? '',
     job_title: props.employee.job_title ?? '',
     department: props.employee.department ?? '',
@@ -449,6 +454,9 @@ const calcLabel = (c) => (c.calc_type === 'fixed' ? money(c.amount) : `${c.amoun
                         <input v-model="editForm.national_id" class="w-full rounded-md border-gray-300 text-sm" />
                         <p v-if="editForm.errors.national_id" class="mt-1 text-xs text-red-600">{{ editForm.errors.national_id }}</p>
                     </div>
+                    <div><label class="mb-1 block text-sm text-gray-600">Tax number</label><input v-model="editForm.tax_number" class="w-full rounded-md border-gray-300 text-sm" /></div>
+                    <div><label class="mb-1 block text-sm text-gray-600">NSSA number</label><input v-model="editForm.nssa_number" class="w-full rounded-md border-gray-300 text-sm" /></div>
+                    <label class="flex items-center gap-2 text-sm text-gray-600"><input v-model="editForm.nssa_registered" type="checkbox" class="rounded border-gray-300 text-brand-600" /> NSSA registered</label>
                     <div>
                         <label class="mb-1 block text-sm text-gray-600">Linked system user</label>
                         <select v-model="editForm.user_id" class="w-full rounded-md border-gray-300 text-sm">

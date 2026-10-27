@@ -41,6 +41,16 @@ const statusBadge = {
     failed: 'bg-red-100 text-red-800',
     invalid: 'bg-red-100 text-red-800',
 };
+
+const canAcknowledge = (r) => ['failed', 'invalid'].includes(r.status) && !r.alert_acknowledged_at;
+
+// Acknowledging silences fdms:monitor for a receipt that has been triaged; the
+// receipt itself is untouched, so a later successful retry still clears it.
+const acknowledge = (r) => {
+    const note = prompt(`Receipt ${r.receipt_global_no} will stop raising alerts.\n\nWhy is this failure accepted?`);
+    if (!note?.trim()) return;
+    router.post(`/settings/fiscalisation/receipts/${r.id}/acknowledge`, { note: note.trim() }, { preserveScroll: true });
+};
 </script>
 
 <template>
@@ -134,6 +144,11 @@ const statusBadge = {
                             <td class="px-4 py-2.5 text-right">{{ money(r.total, r.currency) }}</td>
                             <td class="px-4 py-2.5">
                                 <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="statusBadge[r.status]">{{ r.status }}</span>
+                                <span
+                                    v-if="r.alert_acknowledged_at"
+                                    class="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+                                    :title="`${r.alert_acknowledged_note} — ${r.acknowledged_by?.name ?? 'unknown'}, ${fmtDate(r.alert_acknowledged_at)}`"
+                                >acknowledged</span>
                                 <p v-if="r.error" class="mt-0.5 max-w-xs truncate text-xs text-red-500" :title="r.error">{{ r.error }}</p>
                             </td>
                             <td class="px-4 py-2.5 text-right">
@@ -142,6 +157,7 @@ const statusBadge = {
                                     variant="primary"
                                     @click="router.post(`/income/invoices/${r.invoice_id}/fiscalise`, {}, { preserveScroll: true })"
                                 >Retry</RowAction>
+                                <RowAction v-if="canAcknowledge(r)" @click="acknowledge(r)">Acknowledge</RowAction>
                                 <a v-if="r.verification_url" :href="r.verification_url" target="_blank" class="text-xs text-brand-600 hover:underline">Verify</a>
                             </td>
                         </tr>

@@ -87,6 +87,8 @@ class ChartOfAccountsService
             'group' => 'Administrative Expenses'],
         ['code' => '5080', 'name' => 'Marketing & Advertising', 'type' => 'expense', 'subtype' => 'operating',
             'group' => 'Operating Expenses'],
+        ['code' => '5090', 'name' => 'Employer Payroll Costs', 'type' => 'expense', 'subtype' => 'payroll_employer_cost', 'system' => true,
+            'group' => 'Operating Expenses'],
         ['code' => '5900', 'name' => 'Miscellaneous Expense', 'type' => 'expense', 'subtype' => 'operating',
             'group' => 'Operating Expenses'],
         ['code' => '5950', 'name' => 'Tax Expense', 'type' => 'expense', 'subtype' => 'tax',
@@ -157,6 +159,10 @@ class ChartOfAccountsService
                 ],
             );
         }
+        Account::firstOrCreate(['company_id' => $company->id, 'code' => '5090'], [
+            'name' => 'Employer Payroll Costs', 'type' => 'expense', 'subtype' => 'payroll_employer_cost',
+            'is_system' => true, 'is_active' => true, 'statement_group' => 'Operating Expenses',
+        ]);
     }
 
     public function ensureEmployeeLoanAccount(Company $company): Account

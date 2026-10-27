@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ComplianceReturn;
 use App\Models\Expense;
+use App\Services\Compliance\ComplianceReturnTypeRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -11,13 +12,15 @@ use ZipArchive;
 
 class ComplianceEvidencePackController extends Controller
 {
-    public function __invoke(Request $request, ComplianceReturn $complianceReturn)
+    public function __invoke(Request $request, ComplianceReturn $complianceReturn, ComplianceReturnTypeRegistry $registry)
     {
         abort_unless($complianceReturn->company_id === $request->user()->current_company_id, 403);
         abort_unless($complianceReturn->snapshot, 422, 'Prepare the return before generating an evidence pack.');
         abort_unless(class_exists(ZipArchive::class), 500, 'The PHP ZIP extension is required.');
+        abort_unless($registry->has($complianceReturn->return_type), 422,
+            'This return type has no working papers in this version, so no evidence pack can be produced.');
 
-        $path = tempnam(sys_get_temp_dir(), 'vat7-pack-');
+        $path = tempnam(sys_get_temp_dir(), 'compliance-pack-');
         $zip = new ZipArchive;
         if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
             throw new RuntimeException('Could not create evidence pack.');
@@ -33,10 +36,10 @@ class ComplianceEvidencePackController extends Controller
             'generated_at' => now()->toIso8601String(),
         ];
         $zip->addFromString('manifest.json', json_encode($manifest, JSON_PRETTY_PRINT));
-        $zip->addFromString('vat7-working-papers.csv', $this->csv(
-            ['Currency', 'Standard sales', 'Zero-rated sales', 'Exempt sales', 'Output VAT', 'Taxable purchases', 'Input VAT', 'Ineligible input VAT', 'Adjustments', 'Net VAT'],
-            collect($complianceReturn->snapshot['schedules'] ?? [])->map(fn ($s) => array_values($s))->all()
-        ));
+
+        // The working-papers CSV belongs to the return type, not to this controller.
+        $papers = $registry->for($complianceReturn->return_type)->evidenceCsv($complianceReturn->snapshot);
+        $zip->addFromString($papers['name'], $this->csv($papers['headers'], $papers['rows']));
         $zip->addFromString('reconciliation-exceptions.csv', $this->csv(
             ['Type', 'Severity', 'Reference', 'Message', 'Amount', 'Currency'],
             collect($complianceReturn->snapshot['exceptions'] ?? [])->map(fn ($e) => [

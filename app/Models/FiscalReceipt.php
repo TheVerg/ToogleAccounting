@@ -18,13 +18,26 @@ class FiscalReceipt extends Model
         'invoice_no', 'receipt_date', 'total', 'payload', 'hash', 'device_signature',
         'server_receipt_id', 'server_signature', 'verification_url', 'qr_data',
         'status', 'error',
+        'alert_acknowledged_at', 'alert_acknowledged_by', 'alert_acknowledged_note',
     ];
 
     protected $casts = [
         'receipt_date' => 'datetime',
         'total' => 'decimal:2',
         'payload' => 'array',
+        'alert_acknowledged_at' => 'datetime',
     ];
+
+    /** Receipts in a terminal failure state that nobody has signed off yet. */
+    public function scopeUnacknowledgedFailures($query)
+    {
+        return $query->whereIn('status', ['failed', 'invalid'])->whereNull('alert_acknowledged_at');
+    }
+
+    public function acknowledgedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'alert_acknowledged_by');
+    }
 
     public function device(): BelongsTo
     {

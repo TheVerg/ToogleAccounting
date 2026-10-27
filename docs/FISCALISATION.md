@@ -32,6 +32,19 @@ Depends on: **multi-currency Phase A** (built) — see [MULTICURRENCY.md](MULTIC
   ZIMRA badges (pending/fiscalised/failed) + Retry; receipts log on settings.
 - Invoices issued on account are reported with money type `Credit`; lines are
   tax-exclusive; invoices without VAT use the device's exempt tax ID.
+- **Operational hardening (2026-08-05)**: `fdms:monitor` detects certificate expiry,
+  stalled/failed/invalid receipts and a stalled database queue, with optional email;
+  `fdms:auto-close` provides opt-in scheduled closure while retaining the service's
+  pending/failed/invalid receipt gate. Both are scheduled in `routes/console.php`.
+  The auto-close cutoff runs in `services.fdms.timezone`, not the app timezone —
+  `APP_TIMEZONE` defaults to UTC, so an uncorrected 23:30 cutoff fired at 01:30
+  Harare and closed the following fiscal day.
+- **Alert acknowledgement (2026-08-09)**: `fdms:monitor` reports only *unacknowledged*
+  failed/invalid receipts, so one unresolvable receipt no longer drowns the channel
+  every five minutes. A system admin acknowledges from Settings → Fiscalisation with
+  a mandatory reason (recorded on the receipt and in the audit log). Acknowledging
+  never alters the receipt or the hash chain — a later successful retry clears the
+  failure on its own. Long lists collapse to the first 10 plus a count.
 
 ## Remaining human tasks (before production)
 

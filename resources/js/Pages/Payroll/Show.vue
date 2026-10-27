@@ -54,6 +54,11 @@ const adjustedItems = computed(() =>
         const deductions = lines
             .filter((line) => line.kind === 'deduction')
             .reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+        // Employer contributions are a company cost, never withheld from pay,
+        // so they stay out of deductions and out of net.
+        const employerCosts = lines
+            .filter((line) => line.kind === 'employer_cost')
+            .reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
 
         return {
             ...item,
@@ -61,17 +66,25 @@ const adjustedItems = computed(() =>
             earnings_addons: Math.round((earnings - (Number(item.basic) || 0)) * 100) / 100,
             earnings_total: Math.round(earnings * 100) / 100,
             deductions_total: Math.round(deductions * 100) / 100,
+            employer_costs_total: Math.round(employerCosts * 100) / 100,
             gross: Math.round(earnings * 100) / 100,
             net: Math.round((earnings - deductions) * 100) / 100,
         };
     }),
 );
 
-const adjustedTotals = computed(() => ({
-    gross: adjustedItems.value.reduce((sum, item) => sum + (Number(item.gross) || 0), 0),
-    deductions: adjustedItems.value.reduce((sum, item) => sum + (Number(item.deductions_total) || 0), 0),
-    net: adjustedItems.value.reduce((sum, item) => sum + (Number(item.net) || 0), 0),
-}));
+const adjustedTotals = computed(() => {
+    const sum = (key) => adjustedItems.value.reduce((total, item) => total + (Number(item[key]) || 0), 0);
+    const gross = sum('gross');
+    const employerCosts = sum('employer_costs_total');
+
+    return { gross, deductions: sum('deductions_total'), net: sum('net'), employerCosts, costToCompany: gross + employerCosts };
+});
+
+const hasEmployerCosts = computed(() => adjustedTotals.value.employerCosts > 0);
+
+const lineTone = (line) =>
+    line.kind === 'earning' ? 'text-green-700' : line.kind === 'employer_cost' ? 'text-slate-500' : 'text-red-600';
 
 const openAddons = (item) => {
     selectedItem.value = item;
@@ -123,6 +136,8 @@ const submitApprove = () => {
     <AppLayout>
         <template #title>Payroll {{ run.reference }}</template>
         <template #actions>
+            <a :href="`/payroll/${run.id}/paye-p2`" class="mr-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">PAYE P2 CSV</a>
+            <a :href="`/payroll/${run.id}/nssa`" class="mr-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">NSSA CSV</a>
             <Link
                 href="/payroll"
                 class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -149,9 +164,13 @@ const submitApprove = () => {
                 <span>Approved by {{ run.approver.name }} {{ fmtDate(run.approved_at) }}</span>
             </template>
         </div>
+        <div v-if="run.compliance_warnings?.length" class="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div class="font-semibold">Payroll compliance needs attention</div>
+            <ul class="mt-1 list-disc pl-5"><li v-for="warning in run.compliance_warnings" :key="warning">{{ warning }}</li></ul>
+        </div>
 
         <!-- Summary stat cards -->
-        <div class="mb-6 grid gap-4 sm:grid-cols-3">
+        <div class="mb-6 grid gap-4 sm:grid-cols-2" :class="hasEmployerCosts ? 'lg:grid-cols-4' : 'sm:grid-cols-3'">
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Gross</div>
                 <div class="mt-1 text-2xl font-bold tabular-nums text-slate-800">{{ money(adjustedTotals.gross) }}</div>
@@ -163,6 +182,11 @@ const submitApprove = () => {
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Net Pay</div>
                 <div class="mt-1 text-2xl font-bold tabular-nums text-slate-800">{{ money(adjustedTotals.net) }}</div>
+            </div>
+            <div v-if="hasEmployerCosts" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Employer Costs</div>
+                <div class="mt-1 text-2xl font-bold tabular-nums text-slate-800">{{ money(adjustedTotals.employerCosts) }}</div>
+                <div class="mt-1 text-xs text-slate-500">Cost to company {{ money(adjustedTotals.costToCompany) }}</div>
             </div>
         </div>
 
@@ -230,9 +254,13 @@ const submitApprove = () => {
                                                     v-if="line.source === 'once_off'"
                                                     class="ml-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium uppercase text-purple-800"
                                                 >{{ line.pending ? 'pending' : 'once-off' }}</span>
+                                                <span
+                                                    v-else-if="line.kind === 'employer_cost'"
+                                                    class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase text-slate-600"
+                                                >employer cost</span>
                                             </td>
-                                            <td class="py-1 text-right tabular-nums" :class="line.kind === 'earning' ? 'text-green-700' : 'text-red-600'">
-                                                {{ line.kind === 'earning' ? '' : '-' }}{{ money(line.amount) }}
+                                            <td class="py-1 text-right tabular-nums" :class="lineTone(line)">
+                                                {{ line.kind === 'deduction' ? '-' : '' }}{{ money(line.amount) }}
                                             </td>
                                         </tr>
                                     </tbody>

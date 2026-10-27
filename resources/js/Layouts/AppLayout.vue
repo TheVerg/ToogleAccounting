@@ -100,6 +100,7 @@ const nav = computed(() => [
             { label: 'Shareholders', href: '/shareholders', icon: 'users', show: canDo('equity.view') },
             { label: 'Tax Rates', href: '/taxes/rates', icon: 'taxes', show: canDo('taxes.manage') },
             { label: 'Exchange Rates', href: '/settings/exchange-rates', icon: 'taxes', show: canDo('accounts.view') },
+            { label: 'Payroll Rules', href: '/settings/payroll-statutory', icon: 'taxes', show: canDo('payroll.manage') },
             { label: 'Ratio Configuration', href: '/settings/ratio-benchmarks', icon: 'benchmarks', show: canDo('reports.view') },
         ],
     },

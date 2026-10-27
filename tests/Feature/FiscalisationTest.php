@@ -367,4 +367,61 @@ class FiscalisationTest extends TestCase
         $this->assertSame(1, FiscalReceipt::where('invoice_id', $invoice->id)->count());
         $this->assertSame(1, $device->fresh()->last_receipt_global_no);
     }
+
+    public function test_monitor_stops_alerting_once_a_failed_receipt_is_acknowledged(): void
+    {
+        $receipt = $this->failedReceipt();
+
+        // An unacknowledged failure is a live alert.
+        $this->artisan('fdms:monitor')->assertExitCode(1);
+
+        $receipt->update(['alert_acknowledged_at' => now(), 'alert_acknowledged_note' => 'Voided at ZIMRA by phone']);
+
+        $this->artisan('fdms:monitor')->assertExitCode(0);
+    }
+
+    public function test_acknowledging_a_receipt_requires_a_system_admin_and_a_reason(): void
+    {
+        $this->seed(\Database\Seeders\RolesAndPermissionsSeeder::class);
+        $receipt = $this->failedReceipt();
+
+        $outsider = User::factory()->create(['current_company_id' => $this->company->id]);
+        $this->actingAs($outsider)
+            ->post("/settings/fiscalisation/receipts/{$receipt->id}/acknowledge", ['note' => 'nope'])
+            ->assertForbidden();
+
+        $admin = User::factory()->create(['current_company_id' => $this->company->id]);
+        setPermissionsTeamId($this->company->id);
+        $admin->assignRole('system-admin');
+
+        $this->actingAs($admin)
+            ->post("/settings/fiscalisation/receipts/{$receipt->id}/acknowledge", ['note' => ''])
+            ->assertSessionHasErrors('note');
+        $this->assertNull($receipt->fresh()->alert_acknowledged_at);
+
+        $this->actingAs($admin)
+            ->post("/settings/fiscalisation/receipts/{$receipt->id}/acknowledge", ['note' => 'Reported to ZIMRA, ref 4471'])
+            ->assertRedirect();
+
+        $receipt->refresh();
+        $this->assertNotNull($receipt->alert_acknowledged_at);
+        $this->assertSame($admin->id, $receipt->alert_acknowledged_by);
+        // Acknowledging records a decision; it must not rewrite the receipt log.
+        $this->assertSame('failed', $receipt->status);
+    }
+
+    protected function failedReceipt(): FiscalReceipt
+    {
+        $this->fakeFdms();
+        $device = $this->registerDevice();
+        $day = app(FiscalisationService::class)->openDay($device);
+
+        return FiscalReceipt::create([
+            'fiscal_device_id' => $device->id, 'fiscal_day_id' => $day->id,
+            'receipt_type' => 'FiscalInvoice', 'currency' => 'USD', 'receipt_counter' => 1,
+            'receipt_global_no' => 1, 'invoice_no' => 'INV-1', 'receipt_date' => now(),
+            'total' => 115.50, 'payload' => [], 'hash' => 'H', 'device_signature' => 'S',
+            'status' => 'failed', 'error' => 'RCPT020 signature rejected',
+        ]);
+    }
 }

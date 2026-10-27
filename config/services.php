@@ -56,6 +56,11 @@ return [
         // HS code fallback when neither the line nor the income category has one.
         'default_hs_code' => env('FDMS_DEFAULT_HS_CODE', '99001000'),
         'timezone' => env('FDMS_TIMEZONE', 'Africa/Harare'),
+        'certificate_warning_days' => (int) env('FDMS_CERTIFICATE_WARNING_DAYS', 30),
+        'pending_warning_minutes' => (int) env('FDMS_PENDING_WARNING_MINUTES', 15),
+        'alert_email' => env('FDMS_ALERT_EMAIL'),
+        'auto_close_enabled' => env('FDMS_AUTO_CLOSE_ENABLED', false),
+        'auto_close_time' => env('FDMS_AUTO_CLOSE_TIME', '23:30'),
     ],
 
     // Daily exchange-rate auto-fetch (see App\Services\RateFetchService).

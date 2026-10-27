@@ -82,6 +82,32 @@ class PayrollTest extends TestCase
         ]);
     }
 
+    /**
+     * Payroll has no FX handling, so a foreign-currency bank account would post
+     * its net pay as though the amount were base currency. It is refused.
+     */
+    public function test_payroll_refuses_a_money_account_in_another_currency(): void
+    {
+        $this->employee();
+        $bank = app(ChartOfAccountsService::class)->findBySubtype($this->company, 'bank');
+        $bank->update(['currency' => 'ZWG']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('transacts in ZWG');
+        $this->generate();
+    }
+
+    public function test_payroll_accepts_an_account_with_no_explicit_currency(): void
+    {
+        $this->employee();
+        $bank = app(ChartOfAccountsService::class)->findBySubtype($this->company, 'bank');
+        // An account with no currency of its own transacts in the company's base
+        // currency, so the guard must let it through rather than compare to null.
+        $bank->update(['currency' => null]);
+
+        $this->assertSame('draft', $this->generate()->status);
+    }
+
     public function test_pay_slip_computes_from_the_salary_structure(): void
     {
         $this->employee();
